@@ -1,0 +1,9 @@
+{
+  "name": "com.idmlite.nativehost",
+  "description": "IDMLite Native Messaging Host for Mozilla Firefox",
+  "path": "IDMLite.exe",
+  "type": "stdio",
+  "allowed_extensions": [
+    "idmlite@extension"
+  ]
+}

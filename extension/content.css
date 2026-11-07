@@ -1,0 +1,187 @@
+/* IDMLite Floating Video Bar Styles */
+
+.idmlite-video-badge-container {
+  position: absolute;
+  z-index: 2147483647 !important;
+  top: 12px;
+  right: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  direction: ltr !important;
+  user-select: none !important;
+  pointer-events: auto !important;
+  contain: layout style;
+  isolation: isolate;
+}
+
+/* Force interactivity over YouTube autohide, Instagram canvas overlays, and other layers */
+.html5-video-player.ytp-autohide .idmlite-video-badge-container,
+[class*="autohide"] .idmlite-video-badge-container,
+[class*="player"] .idmlite-video-badge-container,
+div[class*="overlay"] ~ .idmlite-video-badge-container,
+canvas ~ .idmlite-video-badge-container,
+article .idmlite-video-badge-container,
+[role="presentation"] .idmlite-video-badge-container,
+[role="dialog"] .idmlite-video-badge-container {
+  pointer-events: auto !important;
+  z-index: 2147483647 !important;
+}
+
+.idmlite-video-badge-container:hover {
+  opacity: 1 !important;
+}
+
+.idmlite-badge-btn {
+  pointer-events: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  background: linear-gradient(135deg, #0071e3 0%, #0056b3 100%) !important;
+  color: #ffffff !important;
+  padding: 6px 13px !important;
+  border-radius: 6px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  cursor: pointer !important;
+  outline: none !important;
+  line-height: 1 !important;
+  letter-spacing: 0.2px !important;
+}
+
+.idmlite-badge-btn:hover {
+  background: linear-gradient(135deg, #0077ed 0%, #0064cb 100%) !important;
+}
+
+.idmlite-badge-icon {
+  font-size: 14px !important;
+}
+
+.idmlite-badge-sub {
+  background: rgba(255, 255, 255, 0.22) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 2px 5px !important;
+  border-radius: 4px !important;
+  margin-left: 3px !important;
+  letter-spacing: 0.5px !important;
+}
+
+/* Dropdown Menu */
+.idmlite-dropdown-menu {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  min-width: 230px !important;
+  max-width: 320px !important;
+  background: #ffffff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35) !important;
+  border: 1px solid #dcdcdc !important;
+  padding: 6px 0 !important;
+  display: none;
+  flex-direction: column !important;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+  overflow: hidden !important;
+}
+
+.idmlite-dropdown-menu.idmlite-show {
+  display: flex !important;
+  animation: idmlite-fade-in 0.15s ease-out;
+}
+
+@keyframes idmlite-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.idmlite-dropdown-header {
+  padding: 8px 14px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #888888 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  border-bottom: 1px solid #eeeeee !important;
+}
+
+.idmlite-stream-item {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 9px 14px !important;
+  color: #222222 !important;
+  font-size: 12.5px !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+  transition: background 0.15s ease !important;
+}
+
+.idmlite-stream-item:hover {
+  background: #f0f7ff !important;
+  color: #0071e3 !important;
+}
+
+button.idmlite-stream-item {
+  width: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent;
+  text-align: left !important;
+  font-family: inherit !important;
+}
+
+.idmlite-tiktok-badge .idmlite-badge-btn { max-width: 100% !important; min-width: 0 !important; }
+.idmlite-tiktok-badge .idmlite-badge-sub { display: none !important; }
+.idmlite-tiktok-badge .idmlite-badge-icon { flex-shrink: 0; }
+.idmlite-tiktok-badge .idmlite-badge-btn > span:nth-child(2) { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.idmlite-stream-title {
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 170px !important;
+}
+
+.idmlite-stream-badge {
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  background: #e8f3ff !important;
+  color: #0071e3 !important;
+  font-weight: 700 !important;
+}
+
+/* Toast Notification */
+.idmlite-toast {
+  position: fixed !important;
+  bottom: 24px !important;
+  right: 24px !important;
+  background: #1e1e1e !important;
+  color: #ffffff !important;
+  padding: 12px 18px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3) !important;
+  z-index: 2147483647 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  border-left: 4px solid #34c759 !important;
+  animation: idmlite-toast-in 0.3s ease-out;
+}
+
+@keyframes idmlite-toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Hide badge in mini-players or preview containers */
+ytd-miniplayer .idmlite-video-badge-container,
+[mini-player] .idmlite-video-badge-container,
+.idmlite-video-badge-container.idmlite-hidden {
+  display: none !important;
+}

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IDMLite</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="brand">
+        <img src="icons/icon32.png" alt="IDMLite" class="logo">
+        <span class="brand-name">IDMLite</span>
+      </div>
+      <div id="statusBadge" class="status-badge offline">
+        <span class="status-dot"></span>
+        <span id="statusText">Bağlanıyor...</span>
+      </div>
+    </header>
+
+    <!-- Quick Download Box -->
+    <section class="section">
+      <div class="section-title">Hızlı Bağlantı İndir</div>
+      <div class="input-group">
+        <input type="text" id="txtUrl" placeholder="https://... indirme bağlantısı yapıştırın">
+        <button id="btnDownload" class="btn-primary">İndir</button>
+      </div>
+    </section>
+
+    <!-- Active Tab Media Sniffer -->
+    <section class="section">
+      <div class="section-title">
+        <span>Bu Sayfada Yakalanan Medyalar</span>
+        <span id="mediaCount" class="badge">0</span>
+      </div>
+      <div id="mediaList" class="media-list">
+        <div class="empty-state">Bu sekmede henüz medya tespit edilmedi. Sayfadaki videoyu oynatarak akışı tetikleyebilirsiniz.</div>
+      </div>
+    </section>
+
+    <!-- Settings & Toggles -->
+    <section class="section settings-section">
+      <div class="toggle-row">
+        <label for="toggleIntercept">İndirmeleri Otomatik Yakala</label>
+        <input type="checkbox" id="toggleIntercept">
+      </div>
+      <div class="toggle-row">
+        <label for="toggleVideoBar">Video İndirme Panelini Göster</label>
+        <input type="checkbox" id="toggleVideoBar">
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <span>IDMLite v1.0.1</span>
+      <a href="#" id="linkHelp">Kılavuz &amp; Yardım</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "com.idmlite.nativehost",
+  "description": "IDMLite Native Messaging Host",
+  "path": "IDMLite.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://gdcnkipjepgidojhonbcfpgagchjcdci/"
+  ]
+}

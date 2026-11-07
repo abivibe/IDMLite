@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "IDMLite - Video & Download Manager",
+  "version": "1.0.1",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAl/cINeNPhcyhblZSuoAzoDi1tyKEes8oPJXRoU31MhJyNq4Wa5u0eVqVrthBQsO/dBC0O8G81pMq4IIGCADaZJxGIuklslXSQoddKeGrUYqQRVIis0fyXdBFOXsuc+uXXVkY5A75nx1Uav5oJD3yWpLp8qO04X8jKvH59rGZSMDy2IKCNaDtkPdo1N5kXDW66rvF8zH1Z/PRpxt9QOzWdvma/gG+MytFOXJ2J0EF7cE0rf912Izs+/1SeYfzLZHKXCjClf2P5kCspqlMP9cKAZNSqaNku3FjbjI8BrQaipf4g+HHAPzg9u5BEtxFEJYEicO4qnOgsb9ekj5stYPWawIDAQAB",
+  "description": "High-speed multi-threaded download manager and advanced media sniffer for Chrome, Edge, Brave, and Firefox.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "IDMLite İndirme Yöneticisi"
+  },
+  "permissions": [
+    "downloads",
+    "downloads.ui",
+    "storage",
+    "cookies",
+    "tabs",
+    "nativeMessaging",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_end",
+      "all_frames": true,
+      "exclude_matches": [
+        "*://*.mediafire.com/*",
+        "*://mediafire.com/*"
+      ]
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "idmlite@extension",
+      "strict_min_version": "109.0"
+    }
+  }
+}

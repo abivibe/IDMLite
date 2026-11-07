@@ -1,0 +1,65 @@
+# Visual Studio / IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build outputs
+bin/
+obj/
+publish/
+Debug/
+Release/
+x64/
+x86/
+ARM/
+ARM64/
+
+# Executables, compiled binaries and private keys
+*.exe
+*.dll
+*.pdb
+*.so
+*.dylib
+*.node
+*.crx
+*.pem
+*.sha256
+
+# Dart engine build artifacts
+dart_engine/.dart_tool/
+dart_engine/build/
+dart_engine/.packages
+
+# Installer output and verification artifacts
+installer/dist_app/
+installer/dist_extension/
+installer/output/
+installer/pack_extension/
+installer/pack_profile/
+installer/toolchain/
+installer/verification/
+
+# Backups and temporary test files
+backups/
+temp_*
+embed.html
+*.tmp
+*.log
+*.mp4
+*.ts
+
+# Internal verification docs
+DOGRULAMA*.md
+ARAYUZ*.md
+DAGITIM*.md
+STABILIZASYON*.md
+TARAYICI_VE_KURULUM*.md
+
+# OS generated files
+Thumbs.db
+Desktop.ini
+[Dd]esktop.ini
+$RECYCLE.BIN/
