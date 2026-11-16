@@ -10,7 +10,7 @@
     <RootNamespace>IDMLite</RootNamespace>
     <AssemblyName>IDMLite</AssemblyName>
     <ApplicationIcon>app_icon.ico</ApplicationIcon>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

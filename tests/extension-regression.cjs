@@ -97,4 +97,10 @@ function fixture({ holdCancellation = false, saved = null, alreadyComplete = fal
   assert.equal(filenameReleased, 1); assert.equal(f.calls.ui.at(-1), true);
   assert.deepEqual(f.calls.resume, [1]);
   console.log('PASS: failed handoff releases filename gate once and restores original browser UI');
+  f = fixture(); f.fail();
+  const release = 'https://github.com/owner/repo/releases/download/v1.0/file.zip';
+  f.context.crushAndIntercept({ ...item, url: release, finalUrl: 'https://release-assets.githubusercontent.com/asset?signature=old' });
+  await tick();
+  assert.equal(f.calls.posts[0].url, release);
+  console.log('PASS: GitHub release handoff retains the URL that can issue a fresh asset redirect');
 })().catch(error => { console.error(error); process.exitCode = 1; });

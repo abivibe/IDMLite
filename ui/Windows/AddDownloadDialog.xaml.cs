@@ -21,6 +21,7 @@ public partial class AddDownloadDialog : Window
     private long _probedTotalBytes;
     private bool _mediaPreviewPending;
     private string? _lastSuggestedFileName;
+    private bool _directoryWasEdited;
     private bool _probedSizeIsEstimated;
     private readonly Func<string, CancellationToken, Task<ResolvedLinkResult>> _mediaPreviewResolver;
 
@@ -37,6 +38,8 @@ public partial class AddDownloadDialog : Window
         _mediaPreviewResolver = mediaPreviewResolver ?? ((url, ct) => Task.Run(() =>
             LinkResolverManager.Instance.ResolveMediaPreviewAsync(url, ct, url == _initialRequest?.Url ? _initialRequest.Cookies : null), ct));
 
+        TxtFileName.TextChanged += (_, _) => SelectArchiveCategory(TxtFileName.Text);
+        TxtDirectory.TextChanged += (_, _) => _directoryWasEdited = true;
         CmbCategory.SelectedIndex = 0;
 
         if (initialRequest != null)
@@ -51,7 +54,8 @@ public partial class AddDownloadDialog : Window
             }
 
             if (!string.IsNullOrEmpty(initialRequest.Category) &&
-                Enum.TryParse<DownloadCategory>(initialRequest.Category, true, out var cat))
+                Enum.TryParse<DownloadCategory>(initialRequest.Category, true, out var cat) &&
+                CategoryDetector.FromExtension(Path.GetExtension(TxtFileName.Text)) != DownloadCategory.Compressed)
             {
                 SelectCategory(cat);
             }
@@ -106,13 +110,22 @@ public partial class AddDownloadDialog : Window
 
     private void UpdateDirectoryForSelectedCategory()
     {
-        var cat = GetSelectedCategory();
-        TxtDirectory.Text = _settingsManager.GetDirectoryForCategory(cat);
+        if (!UsesAutomaticDirectory()) return;
+        TxtDirectory.Text = _settingsManager.GetDirectoryForCategory(GetSelectedCategory());
+        _directoryWasEdited = false;
+    }
+
+    private bool UsesAutomaticDirectory() => !_directoryWasEdited || string.IsNullOrWhiteSpace(TxtDirectory.Text);
+
+    private void SelectArchiveCategory(string fileName)
+    {
+        if (CategoryDetector.FromExtension(Path.GetExtension(fileName.Trim())) == DownloadCategory.Compressed)
+            SelectCategory(DownloadCategory.Compressed);
     }
 
     private void CmbCategory_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (IsLoaded)
+        if (_settingsManager != null && TxtDirectory != null)
         {
             UpdateDirectoryForSelectedCategory();
         }
@@ -149,6 +162,7 @@ public partial class AddDownloadDialog : Window
             var cat = CategoryDetector.FromExtension(Path.GetExtension(TxtFileName.Text));
             SelectCategory(cat);
         }
+        string initialProbeFileName = TxtFileName.Text;
 
         _probeCts = new CancellationTokenSource();
         var ct = _probeCts.Token;
@@ -608,7 +622,9 @@ public partial class AddDownloadDialog : Window
                                              TxtFileName.Text.EndsWith(".bin", StringComparison.OrdinalIgnoreCase) ||
                                              string.IsNullOrEmpty(Path.GetExtension(TxtFileName.Text));
 
-                        if (isGenericName || isAuthoritativeInstagramTitle)
+                        bool isServerArchive = TxtFileName.Text == initialProbeFileName &&
+                            CategoryDetector.FromExtension(Path.GetExtension(downloader.SuggestedFileName)) == DownloadCategory.Compressed;
+                        if (isGenericName || isAuthoritativeInstagramTitle || isServerArchive)
                         {
                             string safeName = downloader.SuggestedFileName;
                             if (safeName.EndsWith(".ts", StringComparison.OrdinalIgnoreCase))
@@ -749,6 +765,7 @@ public partial class AddDownloadDialog : Window
         if (dialog.ShowDialog() == true)
         {
             TxtDirectory.Text = dialog.FolderName;
+            _directoryWasEdited = true;
         }
     }
 
@@ -796,6 +813,7 @@ public partial class AddDownloadDialog : Window
             fileName = Path.ChangeExtension(fileName, ".mp4");
         }
 
+        SelectArchiveCategory(fileName);
         string dir = TxtDirectory.Text.Trim();
         if (string.IsNullOrWhiteSpace(dir))
         {
@@ -867,6 +885,9 @@ public partial class AddDownloadDialog : Window
             FileName = fileName,
             SaveDirectory = dir,
             Category = selectedCat,
+            ResolveArchiveDestination = UsesAutomaticDirectory() &&
+                selectedCat == DownloadCategory.Other &&
+                CategoryDetector.FromExtension(Path.GetExtension(fileName)) == DownloadCategory.Other,
             TotalSize = finalTaskSize,
             Cookies = _resolvedCookies ?? _initialRequest?.Cookies,
             Referer = _initialRequest?.Referer,

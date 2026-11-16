@@ -20,8 +20,8 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
       await pause(250);
       try { const response = await fetch(endpoint, { signal: AbortSignal.timeout(1000) }); if (response.ok) { status = await response.json(); break; } } catch {}
     }
-    assert.equal(status?.appName, 'IDMLite'); assert.equal(status.version, '1.0.1');
-    console.log('PASS: published WPF app starts and serves IPC 1.0.1');
+    assert.equal(status?.appName, 'IDMLite'); assert.equal(status.version, '1.0.2');
+    console.log('PASS: published WPF app starts and serves IPC 1.0.2');
     async function nativeCall(action, payload = {}) {
     const native = spawn(executable, ['chrome-extension://gdcnkipjepgidojhonbcfpgagchjcdci/'], { windowsHide: true, env });
     const message = Buffer.from(JSON.stringify({ action, ...payload }));
@@ -37,7 +37,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
     return reply;
     }
     const reply = await nativeCall('checkStatus');
-    assert.equal(reply.online, true); assert.equal(reply.version, '1.0.1');
+    assert.equal(reply.online, true); assert.equal(reply.version, '1.0.2');
     console.log('PASS: native host recognizes browser origin and returns valid framed JSON');
     const auth = await nativeCall('getAuth');
     assert.equal(auth.success, true); assert.equal(auth.port, port); assert.equal(typeof auth.token, 'string');
@@ -72,7 +72,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
       const warm = await second.json(); const warmMs = Date.now() - start;
       assert.equal(warm.success, true); assert.ok(warmMs < 1000, 'Warm metadata should not run extraction again');
       assert.equal(warm.preview.Cookies, null); assert.ok(warm.preview.Streams.every(stream => stream.Url === JSON.parse(body).url));
-      fs.writeFileSync(path.resolve(__dirname, '../installer/verification/preview-live-1.0.1.json'), JSON.stringify({ coldMs, warmMs, warmSize: warm.preview.FileSize, noCredentialsInBrowserCache: true }, null, 2));
+      fs.writeFileSync(path.resolve(__dirname, '../installer/verification/preview-live-1.0.2.json'), JSON.stringify({ coldMs, warmMs, warmSize: warm.preview.FileSize, noCredentialsInBrowserCache: true }, null, 2));
       console.log(`PASS: published preview endpoint warms public YouTube metadata (${coldMs} ms cold, ${warmMs} ms warm)`);
     }
     fs.writeFileSync(path.resolve(__dirname, '../installer/verification/release-smoke.json'), JSON.stringify({ appStart: true, ipcVersion: status.version, nativeFraming: true, tokenAuthentication: true }, null, 2));

@@ -503,6 +503,7 @@ public class DownloadQueueManager : IDisposable
             }
             else
             {
+                task.ConnectionCount = Math.Min(task.ConnectionCount, _settingsManager.Current.MaxConnectionsPerDownload);
                 var downloader = new SegmentedDownloader(
                     task.Url,
                     task.FullPath,
@@ -517,6 +518,8 @@ public class DownloadQueueManager : IDisposable
                     RecoveryFilePath = task.RecoveryFilePath,
                     TotalBytes = task.TotalSize
                 };
+                if (task.ResolveArchiveDestination)
+                    downloader.ResolveDestinationAfterProbe = name => ResolveArchiveDestination(task, name);
 
                 if (task.Category == DownloadCategory.Video || downloader.IsVideoDownload() || downloader.IsSingleStreamPreferred())
                 {
@@ -692,6 +695,32 @@ public class DownloadQueueManager : IDisposable
 
     private bool PauseWasRequested(DownloadTask task)
     { lock (_lock) return _pauseRequested.Contains(task.Id); }
+
+    private string ResolveArchiveDestination(DownloadTask task, string? suggestedName)
+    {
+        lock (_lock)
+        {
+            task.ResolveArchiveDestination = false;
+            if (!string.IsNullOrWhiteSpace(suggestedName) &&
+                CategoryDetector.FromExtension(Path.GetExtension(suggestedName)) == DownloadCategory.Compressed)
+            {
+                string folder = _settingsManager.GetDirectoryForCategory(DownloadCategory.Compressed);
+                string name = SegmentedDownloader.CleanFileName(suggestedName);
+                string stem = Path.GetFileNameWithoutExtension(name);
+                string extension = Path.GetExtension(name);
+                for (int suffix = 2; DestinationTaken(Path.Combine(folder, name)); suffix++)
+                    name = $"{stem} ({suffix}){extension}";
+                task.Category = DownloadCategory.Compressed;
+                task.FileName = name;
+                task.SaveDirectory = folder;
+            }
+            RecoveryStore.SaveTask(task);
+            return task.FullPath;
+        }
+
+        bool DestinationTaken(string path) => File.Exists(path) || Directory.Exists(path) ||
+            Tasks.Any(other => other != task && string.Equals(other.FullPath, path, StringComparison.OrdinalIgnoreCase));
+    }
 
     private async Task CheckpointLoopAsync()
     {

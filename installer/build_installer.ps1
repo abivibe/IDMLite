@@ -38,12 +38,12 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed: $LASTEXITCODE" }
 } finally { Pop-Location }
 
-$setupExe = Join-Path $outDir "IDMLite_Setup_v1.0.1.exe"
+$setupExe = Join-Path $outDir "IDMLite_Setup_v1.0.2.exe"
 if (Test-Path $setupExe) {
-    $rootSetup = Join-Path $rootDir 'IDMLite_Setup_v1.0.1.exe'
+    $rootSetup = Join-Path $rootDir 'IDMLite_Setup_v1.0.2.exe'
     Copy-Item -LiteralPath $setupExe -Destination $rootSetup -Force
     $hash = (Get-FileHash -LiteralPath $rootSetup -Algorithm SHA256).Hash
-    "$hash  IDMLite_Setup_v1.0.1.exe" | Set-Content -LiteralPath "$rootSetup.sha256" -Encoding ascii
+    "$hash  IDMLite_Setup_v1.0.2.exe" | Set-Content -LiteralPath "$rootSetup.sha256" -Encoding ascii
     $size = (Get-Item $setupExe).Length
     $sizeMb = [Math]::Round($size / (1024 * 1024), 2)
     Write-Host "`n[SUCCESS] Installer created successfully!" -ForegroundColor Green

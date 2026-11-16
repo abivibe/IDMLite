@@ -3,7 +3,7 @@
 ; =====================================================================
 
 #define MyAppName "IDMLite"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "IDMLite Project"
 #define MyAppURL "https://github.com/idmlite/idmlite"
 #define MyAppExeName "IDMLite.exe"
@@ -115,7 +115,7 @@ Name: "{sd}\Temp\IDMLite"; Flags: uninsneveruninstall
 Source: "dist_app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Extension distribution packages (.crx and .zip)
-Source: "dist_extension\IDMLite_Extension_v1.0.1.zip"; DestDir: "{app}\extension_dist"; Flags: ignoreversion
+Source: "dist_extension\IDMLite_Extension_v1.0.2.zip"; DestDir: "{app}\extension_dist"; Flags: ignoreversion
 Source: "dist_extension\IDMLite.crx"; DestDir: "{app}\extension_dist"; Flags: ignoreversion
 
 [Icons]

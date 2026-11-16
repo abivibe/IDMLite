@@ -51,6 +51,30 @@ internal static class Program
         TextBox Name(AddDownloadDialog dialog) => (TextBox)dialog.FindName("TxtFileName");
         try
         {
+            var archiveSettings = new SettingsManager(directory);
+            string compressed = Path.Combine(directory, "Compressed");
+            string custom = Path.Combine(directory, "Custom");
+            archiveSettings.Current.DefaultDownloadDirectory = directory;
+            archiveSettings.Current.CategoryDirectories[DownloadCategory.Compressed] = compressed;
+            var validate = typeof(AddDownloadDialog).GetMethod("ValidateAndCreateTask", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            foreach (string name in new[] { "Browser archive.ZIP", "archive.rar", "archive.7z", "archive.tar", "archive.tar.zst" })
+            {
+                var archive = new AddDownloadDialog(archiveSettings, new DownloadRequest {
+                    Url = "http://127.0.0.1:1/fetch", FileName = name, Direct = true
+                });
+                Check((bool)validate.Invoke(archive, null)! && archive.CreatedTask?.Category == DownloadCategory.Compressed &&
+                    archive.CreatedTask.SaveDirectory == compressed, $"{name} from browser uses the Compressed folder");
+                archive.Close();
+            }
+            var renamed = new AddDownloadDialog(archiveSettings, new DownloadRequest { Url = "http://127.0.0.1:1/fetch" });
+            var folder = (TextBox)renamed.FindName("TxtDirectory");
+            Name(renamed).Text = "archive.tar.gz";
+            Check(folder.Text == compressed, "A filename learned after the URL updates the automatic destination");
+            folder.Text = custom;
+            Name(renamed).Text = "another.7z";
+            Check((bool)validate.Invoke(renamed, null)! && renamed.CreatedTask?.SaveDirectory == custom, "Archive detection preserves an explicitly edited folder");
+            renamed.Close();
+
             if (args.FirstOrDefault() == "--policies")
             {
                 var service = typeof(IDMLite.MainWindow).Assembly.GetType("IDMLite.Services.ManagedBrowserPolicy")!;

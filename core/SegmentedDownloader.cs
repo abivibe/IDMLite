@@ -46,7 +46,8 @@ public class SegmentedDownloader : IDisposable
     }
 
     public string Url { get; private set; }
-    public string DestinationPath { get; }
+    public string DestinationPath { get; private set; }
+    internal Func<string?, string>? ResolveDestinationAfterProbe { get; set; }
     public int ConnectionCount { get; set; } = 8;
     public SpeedLimiter SpeedLimiter { get; }
     public string? Referer { get; set; }
@@ -231,12 +232,14 @@ public class SegmentedDownloader : IDisposable
             return;
         }
 
+        string? responseFileUrl = null;
         try
         {
             using var response = await SendWithRedirectsAsync(HttpMethod.Head, Url, null, cancellationToken).ConfigureAwait(false);
 
             if (response.IsSuccessStatusCode)
             {
+                responseFileUrl = response.RequestMessage?.RequestUri?.AbsoluteUri;
                 string? mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
                 bool isHtml = mediaType == "text/html";
                 bool isCompressedWire = response.Content.Headers.ContentEncoding.Count > 0 &&
@@ -254,23 +257,25 @@ public class SegmentedDownloader : IDisposable
                 if (response.Headers.ETag != null) ETag = response.Headers.ETag.ToString();
                 LastModified = response.Content.Headers.LastModified;
 
-                var cd = response.Content.Headers.ContentDisposition;
-                string? name = cd?.FileNameStar ?? cd?.FileName;
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    string cleaned = CleanFileName(name);
-                    if (!string.IsNullOrWhiteSpace(cleaned)) SuggestedFileName = cleaned;
-                }
+                ReadDispositionFileName(response);
             }
         }
         catch (OperationCanceledException) { throw; }
         catch { }
 
         if (TotalBytes <= 0 && knownBytes > 0) TotalBytes = knownBytes;
-        if (!rangeOk && !IsSingleStreamPreferred() && !IsGoogleDriveStream())
+        bool needsArchiveName = ResolveDestinationAfterProbe != null && string.IsNullOrWhiteSpace(SuggestedFileName) && mimeExt == null;
+        if ((!rangeOk || needsArchiveName) && !IsSingleStreamPreferred() && !IsGoogleDriveStream())
         {
             try {
                 using var range = await SendWithRedirectsAsync(HttpMethod.Get, Url, new RangeHeaderValue(0, 0), cancellationToken).ConfigureAwait(false);
+                if (range.IsSuccessStatusCode)
+                {
+                    ReadDispositionFileName(range);
+                    responseFileUrl = range.RequestMessage?.RequestUri?.AbsoluteUri;
+                    var mediaType = range.Content.Headers.ContentType?.MediaType;
+                    if (mediaType != null) mimeExt = GetExtensionFromMimeType(mediaType.ToLowerInvariant()) ?? mimeExt;
+                }
                 if (range.StatusCode == HttpStatusCode.PartialContent && range.Content.Headers.ContentRange is { From: 0, To: 0, Length: > 0 } contentRange) {
                     TotalBytes = contentRange.Length.Value;
                     ETag = range.Headers.ETag?.ToString() ?? ETag;
@@ -283,8 +288,16 @@ public class SegmentedDownloader : IDisposable
 
         if (string.IsNullOrWhiteSpace(SuggestedFileName) || !SuggestedFileName.Contains('.'))
         {
-            SuggestedFileName = ResolveProperFileName(Url, mimeExt);
+            SuggestedFileName = ResolveProperFileName(responseFileUrl ?? Url, mimeExt);
         }
+    }
+
+    private void ReadDispositionFileName(HttpResponseMessage response)
+    {
+        var disposition = response.Content.Headers.ContentDisposition;
+        string? fileName = disposition?.FileNameStar ?? disposition?.FileName;
+        if (fileName != null && CleanFileName(fileName) is { Length: > 0 } cleaned)
+            SuggestedFileName = cleaned;
     }
 
     public async Task ProbeAsync(CancellationToken cancellationToken = default)
@@ -393,6 +406,12 @@ public class SegmentedDownloader : IDisposable
         bool isHtmlProbe = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() == "text/html";
         using (response)
         {
+            if (!response.IsSuccessStatusCode)
+            {
+                SupportsRange = false;
+                return;
+            }
+
             if (!isHtmlProbe)
             {
                 if (response.Content.Headers.ContentLength.HasValue && response.Content.Headers.ContentLength.Value > 1)
@@ -467,13 +486,7 @@ public class SegmentedDownloader : IDisposable
             }
 
             // Extract file name from disposition if present
-            var disp = response.Content.Headers.ContentDisposition;
-            string? dispName = disp?.FileNameStar ?? disp?.FileName;
-            if (!string.IsNullOrWhiteSpace(dispName))
-            {
-                string cleaned = CleanFileName(dispName);
-                if (!string.IsNullOrWhiteSpace(cleaned)) SuggestedFileName = cleaned;
-            }
+            ReadDispositionFileName(response);
 
             // Inspect ContentType for media/archive extension detection
             string? mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
@@ -530,6 +543,9 @@ public class SegmentedDownloader : IDisposable
         {
             // A known browser size is not proof of range support or file identity.
             await ProbeAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            if (ResolveDestinationAfterProbe != null)
+                DestinationPath = ResolveDestinationAfterProbe(SuggestedFileName);
 
             if (Url.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
                 Url.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase))
@@ -567,8 +583,7 @@ public class SegmentedDownloader : IDisposable
             {
                 // Video, text (.txt, etc.) and small files (<64 KB): Use standard sequential single-stream
                 // to prevent CDN rate-limiting, compressed Content-Length range mismatches, and MP4 container corruption.
-                Segments.Clear();
-                Segments.Add(new DownloadSegment(0, 0, TotalBytes > 0 ? TotalBytes - 1 : 0));
+                lock (_stateLock) InitializeSegments();
                 using (var fileStream = new FileStream(
                     DestinationPath,
                     FileMode.Create,
@@ -627,7 +642,7 @@ public class SegmentedDownloader : IDisposable
                 {
                     fallbackToSingleStream = true;
                     SupportsRange = false;
-                    lock (_stateLock) Segments.Clear();
+                    lock (_stateLock) InitializeSegments();
                     if (RecoveryFilePath == null) { try { File.Delete(MetadataPath); } catch { } }
                 }
             }
@@ -753,9 +768,13 @@ public class SegmentedDownloader : IDisposable
                 if (res.StatusCode == HttpStatusCode.PartialContent)
                 {
                     var range = res.Content.Headers.ContentRange;
-                    if (range?.From != segment.CurrentByte || range.To != segment.EndByte ||
+                    if (range is not { Unit: "bytes", To: long end } || range.From != segment.CurrentByte ||
+                        end < segment.CurrentByte || end > segment.EndByte ||
                         (range.Length.HasValue && range.Length != TotalBytes))
                         throw new ServerDoesNotSupportRangeException("Sunucu tutarsız Content-Range döndürdü; tek bağlantı ile yeniden deneniyor.");
+                    if (ETag != null && res.Headers.ETag is { IsWeak: false } tag && !ETag.StartsWith("W/", StringComparison.OrdinalIgnoreCase) &&
+                        tag.ToString() != ETag)
+                        throw new ServerDoesNotSupportRangeException("Dosya kimliği değişti; tek bağlantı ile yeniden deneniyor.");
                 }
 
                 if (res.StatusCode == HttpStatusCode.OK)
@@ -781,9 +800,11 @@ public class SegmentedDownloader : IDisposable
                 long lastReportTicks = Stopwatch.GetTimestamp();
                 long bytesSinceReport = 0;
 
-                while (segment.CurrentByte <= segment.EndByte)
+                // Some CDNs cap the size of each response. Keep advancing the same logical part.
+                long responseEnd = res.Content.Headers.ContentRange?.To ?? segment.EndByte;
+                while (segment.CurrentByte <= responseEnd)
                 {
-                    long remaining = segment.EndByte - segment.CurrentByte + 1;
+                    long remaining = responseEnd - segment.CurrentByte + 1;
                     if (remaining <= 0) break;
 
                     int toRead = (int)Math.Min(buffer.Length, remaining);
@@ -828,6 +849,12 @@ public class SegmentedDownloader : IDisposable
                     segment.IsCompleted = true;
                     segment.CurrentSpeedBytesPerSec = 0;
                     return;
+                }
+
+                if (segment.CurrentByte > responseEnd)
+                {
+                    retryCount = 0;
+                    continue;
                 }
 
                 // If not finished and stream closed, increment retry
@@ -1063,7 +1090,6 @@ public class SegmentedDownloader : IDisposable
                 }
             }
 
-            var activeSegments = _transferEngine.ActiveSegments;
             ProgressChanged?.Invoke(this, new DownloadProgressEventArgs
             {
                 DownloadedBytes = currentDownloaded,
@@ -1071,7 +1097,7 @@ public class SegmentedDownloader : IDisposable
                 ProgressPercentage = Math.Clamp(percent, 0.0, 100.0),
                 SpeedBytesPerSec = Math.Max(0, speed),
                 TimeRemaining = remaining,
-                Segments = activeSegments.Count > 0 ? activeSegments : snapshot.Take(Math.Clamp(ConnectionCount, 1, 32)).ToList()
+                Segments = snapshot
             });
 
             // Checkpoint at most once per second; network progress remains frequent.
@@ -1171,7 +1197,7 @@ public class SegmentedDownloader : IDisposable
             }
 
             var currentUri = new Uri(currentUrl);
-            var req = new HttpRequestMessage(currentMethod, currentUrl);
+            using var req = new HttpRequestMessage(currentMethod, currentUrl);
             ApplyHeadersWithoutCookies(req);
 
             string cookieHeader = CookiesFor(currentUri);
@@ -1190,16 +1216,7 @@ public class SegmentedDownloader : IDisposable
                     req.Headers.IfRange = new RangeConditionHeaderValue(LastModified.Value);
             }
 
-            HttpResponseMessage res;
-            try
-            {
-                res = await HttpClientInstance.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            }
-            catch
-            {
-                req.Dispose();
-                throw;
-            }
+            var res = await HttpClientInstance.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 
             CaptureSetCookiesFromResponse(res, currentUri);
 
@@ -1229,25 +1246,19 @@ public class SegmentedDownloader : IDisposable
                     }
                 }
 
-                // Method transition on redirect
-                if (statusCode == 303 || ((statusCode == 301 || statusCode == 302) && currentMethod == HttpMethod.Post))
+                // A HEAD probe must remain bodyless across redirects.
+                if (currentMethod != HttpMethod.Head &&
+                    (statusCode == 303 || ((statusCode == 301 || statusCode == 302) && currentMethod == HttpMethod.Post)))
                 {
                     currentMethod = HttpMethod.Get;
                 }
 
-                // If redirected to accounts.google.com, strip OSID and COMPASS so clean origin authentication occurs
-                if (redirectUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase))
-                {
-                    // CookieContainer preserves domain, path and Secure scope.
-                }
-
                 currentUrl = redirectUri.ToString();
 
-                // Update Url only if not on accounts.google.com
-                if (!redirectUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase))
-                {
+                // Drive's resolved storage URL is reused for its one-time confirmation flow.
+                // Other downloads keep their source so a probe or retry can obtain a fresh redirect.
+                if (IsGoogleDriveStream() && !redirectUri.Host.Equals("accounts.google.com", StringComparison.OrdinalIgnoreCase))
                     Url = currentUrl;
-                }
 
                 continue;
             }
@@ -1337,7 +1348,28 @@ public class SegmentedDownloader : IDisposable
                 part.IsCompleted = part.CurrentByte == next;
             }
             if (next != TotalBytes || meta.Segments.Select(s => s.Index).Distinct().Count() != meta.Segments.Count) return false;
-            Segments.Clear(); Segments.AddRange(meta.Segments);
+            if (meta.Segments.Count <= Math.Clamp(ConnectionCount, 1, 32))
+            {
+                Segments.Clear();
+                Segments.AddRange(meta.Segments);
+                return true;
+            }
+
+            // Legacy checkpoints may contain more parts than the current limit. Reuse
+            // the contiguous saved prefix of each new part, stopping at the first gap.
+            InitializeSegments();
+            var previous = meta.Segments.OrderBy(s => s.StartByte).ToArray();
+            foreach (var segment in Segments)
+            {
+                foreach (var saved in previous)
+                {
+                    if (saved.EndByte < segment.CurrentByte) continue;
+                    if (saved.StartByte > segment.CurrentByte || saved.CurrentByte <= segment.CurrentByte) break;
+                    segment.CurrentByte = Math.Min(saved.CurrentByte, segment.EndByte + 1);
+                    if (segment.CurrentByte > segment.EndByte) break;
+                }
+                segment.IsCompleted = segment.CurrentByte > segment.EndByte;
+            }
             return true;
         }
         catch
@@ -1438,6 +1470,13 @@ public class SegmentedDownloader : IDisposable
             "application/x-rar-compressed" => ".rar",
             "application/vnd.rar" => ".rar",
             "application/x-7z-compressed" => ".7z",
+            "application/x-tar" => ".tar",
+            "application/gzip" or "application/x-gzip" => ".gz",
+            "application/x-bzip2" => ".bz2",
+            "application/x-xz" => ".xz",
+            "application/zstd" or "application/x-zstd" => ".zst",
+            "application/vnd.ms-cab-compressed" => ".cab",
+            "application/x-apple-diskimage" => ".dmg",
             "application/pdf" => ".pdf",
             "text/plain" => ".txt",
             "text/markdown" => ".md",

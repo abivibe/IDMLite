@@ -541,7 +541,7 @@ public partial class MainWindow : Window
     private void MenuAbout_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(
-            "IDMLite v1.0.1\n\nAçık Kaynak Kodlu Çok Kanallı İndirme Yöneticisi\n\n• Multi-Thread Eşzamanlı Parça İndirme (Range Request)\n• HLS (.m3u8) Video İndirme Motoru\n• Manifest V3 Tarayıcı Video Yakalama Paneli\n• Native Messaging Host & Yerel REST IPC",
+            "IDMLite v1.0.2\n\nAçık Kaynak Kodlu Çok Kanallı İndirme Yöneticisi\n\n• Multi-Thread Eşzamanlı Parça İndirme (Range Request)\n• HLS (.m3u8) Video İndirme Motoru\n• Manifest V3 Tarayıcı Video Yakalama Paneli\n• Native Messaging Host & Yerel REST IPC",
             "Hakkında - IDMLite",
             MessageBoxButton.OK,
             MessageBoxImage.Information);

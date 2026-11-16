@@ -32,7 +32,8 @@ public static class CategoryDetector
 
     private static readonly HashSet<string> CompressedExts = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso", ".tgz", ".cab", ".dmg"
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".iso", ".tgz", ".cab", ".dmg",
+        ".zst", ".tbz", ".tbz2", ".txz", ".tzst", ".lz", ".lzma", ".cpio"
     };
 
     private static readonly HashSet<string> MusicExts = new(StringComparer.OrdinalIgnoreCase)

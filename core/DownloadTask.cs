@@ -13,6 +13,7 @@ public class DownloadTask
     public long DownloadedSize { get; set; }
     public DownloadStatus Status { get; set; } = DownloadStatus.Queued;
     public DownloadCategory Category { get; set; } = DownloadCategory.Other;
+    public bool ResolveArchiveDestination { get; set; }
     public int ConnectionCount { get; set; } = 8;
     public DateTime DateAdded { get; set; } = DateTime.Now;
 

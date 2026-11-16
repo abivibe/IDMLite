@@ -92,11 +92,14 @@ public class IpcServer : IDisposable
                 return WindowUnavailable(downloadReq);
             }
 
-            string fileName = downloadReq.FileName ?? SegmentedDownloader.ExtractFileNameFromUrl(downloadReq.Url);
-            string ext = Path.GetExtension(fileName);
-            var category = !string.IsNullOrEmpty(downloadReq.Category) && Enum.TryParse<DownloadCategory>(downloadReq.Category, true, out var cat)
+            string fileName = string.IsNullOrWhiteSpace(downloadReq.FileName)
+                ? SegmentedDownloader.ExtractFileNameFromUrl(downloadReq.Url)
+                : SegmentedDownloader.CleanFileName(downloadReq.FileName);
+            var detected = CategoryDetector.FromExtension(Path.GetExtension(fileName));
+            var category = detected != DownloadCategory.Compressed &&
+                Enum.TryParse<DownloadCategory>(downloadReq.Category, true, out var cat) && cat is not (DownloadCategory.All or DownloadCategory.Other)
                 ? cat
-                : CategoryDetector.FromExtension(ext);
+                : detected;
 
             var task = new DownloadTask
             {
@@ -106,6 +109,7 @@ public class IpcServer : IDisposable
                 FileName = fileName,
                 SaveDirectory = _settingsManager.GetDirectoryForCategory(category),
                 Category = category,
+                ResolveArchiveDestination = category == DownloadCategory.Other,
                 Referer = downloadReq.Referer,
                 UserAgent = downloadReq.UserAgent,
                 Cookies = downloadReq.Cookies,
@@ -239,7 +243,7 @@ public class IpcServer : IDisposable
                     status = "ok",
                     online = true,
                     appName = "IDMLite",
-                    version = "1.0.1",
+                    version = "1.0.2",
                     activeCount = authorized ? snapshot.Count(t => t.Status == DownloadStatus.Downloading) : 0,
                     queueCount = authorized ? snapshot.Count : 0
                 };

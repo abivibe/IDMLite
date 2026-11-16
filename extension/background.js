@@ -412,6 +412,10 @@ const handoffPrefix = "downloadHandoff:";
 
 function crushAndIntercept(downloadItem, suggest, saved = null) {
   let url = downloadItem?.finalUrl || downloadItem?.url || "";
+  const githubReleaseUrl = /^https:\/\/(?:www\.)?github\.com\/[^/]+\/[^/]+\/releases\/(?:latest\/)?download\//i;
+  if (githubReleaseUrl.test(downloadItem?.url ?? "")) {
+    url = downloadItem.url;
+  }
   if (url.startsWith("blob:https://github.com/") && downloadItem.referrer) {
     url = normalizeGitHubRawUrl(downloadItem.referrer);
   } else if (/^https?:\/\//i.test(url)) {
@@ -760,7 +764,7 @@ async function checkIDMLiteStatus(port) {
     if (nativeStatus && (nativeStatus.online || nativeStatus.status === "ok")) {
       return {
         online: true,
-        version: nativeStatus.version || "1.0.1",
+        version: nativeStatus.version || "1.0.2",
         activeCount: nativeStatus.activeCount || 0
       };
     }

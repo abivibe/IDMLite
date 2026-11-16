@@ -72,7 +72,7 @@ try {
     $gecko.permissions = @($gecko.permissions | Where-Object { $_ -ne 'downloads.ui' })
     $gecko.background = [pscustomobject]@{ scripts = @('background.js'); persistent = $false }
     [IO.File]::WriteAllText((Join-Path $firefox 'manifest.json'), ($gecko | ConvertTo-Json -Depth 20))
-    Compress-Archive -Path (Join-Path $firefox '*') -DestinationPath (Join-Path $root 'installer/dist_extension/IDMLite_Firefox_Unsigned_v1.0.1.zip') -Force
+    Compress-Archive -Path (Join-Path $firefox '*') -DestinationPath (Join-Path $root 'installer/dist_extension/IDMLite_Firefox_Unsigned_v1.0.2.zip') -Force
     Copy-Item -LiteralPath (Join-Path $root 'IDMLite.crx') -Destination $dist -Force
     Copy-Item -LiteralPath (Join-Path $root 'DAGITIM.md') -Destination $dist -Force
     Copy-Item -LiteralPath (Join-Path $root 'DOGRULAMA_1.0.1.md') -Destination $dist -Force

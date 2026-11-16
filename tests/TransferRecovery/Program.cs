@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
 using IDMLite.Core;
@@ -21,22 +22,41 @@ string root = Path.Combine(Path.GetTempPath(), "IDMLite-transfer-" + Guid.NewGui
 Directory.CreateDirectory(root);
 using var server = new RangeFixture();
 try {
-    var planned = AdaptiveTransferEngine.Plan(1024L * 1024 * 1024, 8);
-    Check(planned.Count > 8 && planned.Count <= 1024 && planned.Sum(p => p.TotalBytes) == 1024L * 1024 * 1024, "Adaptive plan covers all bytes with bounded parts");
-    Check(planned.Zip(planned.Skip(1)).All(pair => pair.First.EndByte + 1 == pair.Second.StartByte), "Adaptive parts do not overlap or leave gaps");
-    Check(AdaptiveTransferEngine.Plan(1, 32).Single().TotalBytes == 1, "One-byte file is represented correctly");
-    string balanced = Path.Combine(root, "balanced.bin");
-    using (var download = new SegmentedDownloader(server.Url + "balanced", balanced, 4) { SkipResolver = true, TotalBytes = server.Data.Length }) {
-        await download.StartAsync();
-        Check(download.Status == DownloadStatus.Completed && File.ReadAllBytes(balanced).SequenceEqual(server.Data), "Balanced multi-connection download has exact file bytes");
-        Check(server.Peak > 1 && server.Peak <= 4, "Server observes real bounded parallel connections");
-        Check(server.BeforeSlowFinished > 4, "Free workers fetch more parts while one connection is slow");
+    var archiveSettings = new SettingsManager(Path.Combine(root, "archives-state"));
+    string compressed = Path.Combine(root, "Compressed");
+    archiveSettings.Current.DefaultDownloadDirectory = root;
+    archiveSettings.Current.CategoryDirectories[DownloadCategory.Compressed] = compressed;
+    var ipcPort = new TcpListener(IPAddress.Loopback, 0);
+    ipcPort.Start();
+    archiveSettings.Current.IpcPort = ((IPEndPoint)ipcPort.LocalEndpoint).Port;
+    ipcPort.Stop();
+    using (var queue = new DownloadQueueManager(archiveSettings))
+    using (var ipc = new IpcServer(queue, archiveSettings))
+    using (var client = new HttpClient())
+    {
+        ipc.Start();
+        client.DefaultRequestHeaders.Add("X-IDMLite-Token", archiveSettings.Current.IpcToken);
+        Directory.CreateDirectory(compressed);
+        string existing = Path.Combine(compressed, "server.tar.gz");
+        File.WriteAllText(existing, "existing");
+        foreach (bool direct in new[] { false, true })
+        {
+            string requestId = Guid.NewGuid().ToString();
+            using var response = await client.PostAsJsonAsync($"http://127.0.0.1:{ipc.Port}/api/download", new DownloadRequest
+            {
+                RequestId = requestId, Url = server.Url + "archive", FileName = "download.bin", AutoStart = true, Direct = direct
+            });
+            response.EnsureSuccessStatusCode();
+            var archive = queue.GetTasksSnapshot().Single(task => task.OriginRequestId == requestId);
+            await Until(() => archive.Status is DownloadStatus.Completed or DownloadStatus.Error);
+            Check(archive.Status == DownloadStatus.Completed && archive.Category == DownloadCategory.Compressed &&
+                archive.SaveDirectory == compressed && File.ReadAllBytes(archive.FullPath).SequenceEqual(server.Data),
+                $"Content-Disposition routes queued download to Compressed when direct={direct}");
+        }
+        Check(File.ReadAllText(existing) == "existing" && queue.GetTasksSnapshot().Select(task => task.FullPath).Distinct().Count() == 2,
+            "Late archive names do not overwrite existing files or other queued downloads");
     }
-    using (var hiddenRange = new SegmentedDownloader(server.Url + "unadvertised", Path.Combine(root, "unadvertised.bin"), 4) { SkipResolver = true, TotalBytes = server.Data.Length }) {
-        await hiddenRange.StartAsync();
-        Check(hiddenRange.Status == DownloadStatus.Completed && hiddenRange.Segments.Count > 1 && File.ReadAllBytes(hiddenRange.DestinationPath).SequenceEqual(server.Data), "Range support is discovered even without Accept-Ranges advertising");
-    }
-    server.Version = 1;
+
     async Task<double> Benchmark(int connections) {
         using var sample = new SegmentedDownloader(server.Url + "benchmark", Path.Combine(root, $"benchmark-{connections}.bin"), connections) { SkipResolver = true };
         var timer = Stopwatch.StartNew(); await sample.StartAsync();
@@ -46,6 +66,58 @@ try {
     double serialTime = await Benchmark(1), parallelTime = await Benchmark(4);
     Check(parallelTime < serialTime * 0.8, "Parallel engine uses more of available bandwidth on a per-connection-limited server");
     Console.WriteLine($"MEASURED FIXTURE: single={4 / serialTime:F2} MiB/s, parallel={4 / parallelTime:F2} MiB/s; speedup={serialTime / parallelTime:F2}x");
+
+    using (var redirected = new SegmentedDownloader(server.Url + "release", Path.Combine(root, "release.bin"), 4) { SkipResolver = true }) {
+        await redirected.StartAsync();
+        Check(redirected.Url == server.Url + "release", "Release download preserves its source after a HEAD redirect to an expired asset");
+        Check(redirected.Segments.Count == 4 && File.ReadAllBytes(redirected.DestinationPath).SequenceEqual(server.Data), "Redirected short ranges finish within the logical part limit");
+    }
+
+    var planned = AdaptiveTransferEngine.Plan(1024L * 1024 * 1024, 8);
+    Check(planned.Count == 8 && planned.Sum(p => p.TotalBytes) == 1024L * 1024 * 1024, "Plan covers all bytes within the configured part limit");
+    Check(AdaptiveTransferEngine.Plan(long.MaxValue, 32).Count == 32, "Very large files stay within the 32-part limit without integer overflow");
+    Check(planned.Zip(planned.Skip(1)).All(pair => pair.First.EndByte + 1 == pair.Second.StartByte), "Adaptive parts do not overlap or leave gaps");
+    Check(AdaptiveTransferEngine.Plan(1, 32).Single().TotalBytes == 1, "One-byte file is represented correctly");
+    string balanced = Path.Combine(root, "balanced.bin");
+    using (var download = new SegmentedDownloader(server.Url + "balanced", balanced, 4) { SkipResolver = true, TotalBytes = server.Data.Length }) {
+        await download.StartAsync();
+        Check(download.Status == DownloadStatus.Completed && File.ReadAllBytes(balanced).SequenceEqual(server.Data), "Balanced multi-connection download has exact file bytes");
+        Check(server.Peak > 1 && server.Peak <= 4, "Server observes real bounded parallel connections");
+        Check(download.Segments.Count == 4, "Concurrent transfer keeps the configured number of logical parts");
+    }
+    using (var hiddenRange = new SegmentedDownloader(server.Url + "unadvertised", Path.Combine(root, "unadvertised.bin"), 4) { SkipResolver = true, TotalBytes = server.Data.Length }) {
+        await hiddenRange.StartAsync();
+        Check(hiddenRange.Status == DownloadStatus.Completed && hiddenRange.Segments.Count > 1 && File.ReadAllBytes(hiddenRange.DestinationPath).SequenceEqual(server.Data), "Range support is discovered even without Accept-Ranges advertising");
+    }
+
+    string legacyPath = Path.Combine(root, "legacy.bin");
+    int eighth = server.Data.Length / 8;
+    var oldParts = Enumerable.Range(0, 8).Select(i => new DownloadSegment(i, i * eighth, (i + 1) * eighth - 1)).ToList();
+    using (var legacy = File.Create(legacyPath))
+    {
+        legacy.SetLength(server.Data.Length);
+        foreach (var part in oldParts.Where(p => p.Index % 2 == 0))
+        {
+            legacy.Position = part.StartByte;
+            legacy.Write(server.Data.AsSpan((int)part.StartByte, eighth));
+            part.CurrentByte = part.EndByte + 1;
+            part.IsCompleted = true;
+        }
+    }
+    File.WriteAllText(legacyPath + ".idmlite.meta", JsonSerializer.Serialize(new DownloadMetadata
+    {
+        Url = server.Url + "legacy", DestinationPath = legacyPath, TotalBytes = server.Data.Length,
+        ETag = "\"v1\"", SupportsRange = true, Segments = oldParts
+    }));
+    int legacyPhase = ++server.Phase;
+    using (var legacy = new SegmentedDownloader(server.Url + "legacy", legacyPath, 4) { SkipResolver = true })
+    {
+        await legacy.StartAsync();
+        Check(legacy.Segments.Count == 4 && File.ReadAllBytes(legacyPath).SequenceEqual(server.Data), "Legacy checkpoint resumes within the new logical part limit");
+        var requests = server.Requests.Where(r => r.Phase == legacyPhase).ToArray();
+        Check(requests.Length == 4 && requests.Sum(r => r.End - r.Start + 1) == server.Data.Length / 2, "Legacy checkpoint retains the four saved prefixes");
+    }
+    server.Version = 1;
     using (var changing = new SegmentedDownloader(server.Url + "mutating", Path.Combine(root, "mutating.bin"), 4) { SkipResolver = true }) {
         await changing.StartAsync();
         Check(changing.Status == DownloadStatus.Completed && File.ReadAllBytes(changing.DestinationPath).SequenceEqual(server.CurrentData), "If-Range protects against server changes during parallel transfer");
@@ -146,9 +218,8 @@ sealed class RangeFixture : IDisposable
     public byte[] BenchmarkData { get; } = Enumerable.Range(0, 4 * 1024 * 1024).Select(i => (byte)(i % 251)).ToArray();
     private byte[]? changed;
     public byte[] CurrentData => Version == 1 ? Data : changed ??= Data.Select(b => (byte)(b ^ 255)).ToArray();
-    public int Version = 1, Phase, Peak, BeforeSlowFinished, FailuresRemaining;
+    public int Version = 1, Phase, Peak, FailuresRemaining;
     private int active;
-    private bool slowFinished;
     public record RangeRequest(int Phase, int Start, int End);
     public ConcurrentQueue<RangeRequest> Requests = new();
     public string Url { get; }
@@ -159,6 +230,20 @@ sealed class RangeFixture : IDisposable
         bool counted = false;
         try {
             var request = context.Request; var response = context.Response;
+            if (request.Url!.AbsolutePath == "/archive")
+            {
+                if (request.HttpMethod == "HEAD") { response.StatusCode = 405; response.Close(); return; }
+                response.ContentType = "application/gzip";
+                response.AddHeader("Content-Disposition", "attachment; filename*=UTF-8''server.tar.gz");
+                response.ContentLength64 = Data.Length;
+                await response.OutputStream.WriteAsync(Data);
+                response.Close(); return;
+            }
+            if (request.Url!.AbsolutePath == "/release") {
+                response.Redirect(request.HttpMethod == "HEAD" ? "/expired-asset" : "/release-asset");
+                response.Close(); return;
+            }
+            if (request.Url.AbsolutePath == "/expired-asset") { response.StatusCode = 403; response.Close(); return; }
             if (request.Url!.AbsolutePath == "/flaky" && Interlocked.Decrement(ref FailuresRemaining) >= 0) { response.StatusCode = 503; response.Close(); return; }
             if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/mutating") Version = 2;
             var data = request.Url.AbsolutePath == "/benchmark" ? BenchmarkData : CurrentData; string etag = $"\"v{Version}\"";
@@ -168,15 +253,19 @@ sealed class RangeFixture : IDisposable
             int start = 0, end = data.Length - 1;
             if (request.Headers["Range"] is string range && (request.Headers["If-Range"] == null || request.Headers["If-Range"] == etag)) {
                 var parts = range[6..].Split('-'); start = int.Parse(parts[0]); end = int.Parse(parts[1]); response.StatusCode = 206;
+                if (request.Url.AbsolutePath == "/release-asset") end = Math.Min(end, start + 1024 * 1024 - 1);
                 response.AddHeader("Content-Range", $"bytes {start}-{end}/{data.Length}");
             }
             response.ContentLength64 = end - start + 1;
             if (request.HttpMethod != "HEAD") {
-                Requests.Enqueue(new(Phase, start, end)); counted = true;
-                int concurrent = Interlocked.Increment(ref active); int observed;
-                do { observed = Peak; if (observed >= concurrent) break; } while (Interlocked.CompareExchange(ref Peak, concurrent, observed) != observed);
-                if (request.Url!.AbsolutePath == "/balanced") {
-                    if (!slowFinished) Interlocked.Increment(ref BeforeSlowFinished);
+                if (request.Url.AbsolutePath == "/benchmark") await Task.Delay(100);
+                Requests.Enqueue(new(Phase, start, end));
+                if (request.Url.AbsolutePath == "/balanced")
+                {
+                    counted = true;
+                    int concurrent = Interlocked.Increment(ref active);
+                    int observed;
+                    do { observed = Peak; if (observed >= concurrent) break; } while (Interlocked.CompareExchange(ref Peak, concurrent, observed) != observed);
                     if (start == 0) await Task.Delay(500);
                 }
                 for (int pos = start; pos <= end; pos += 8192) {
@@ -184,7 +273,6 @@ sealed class RangeFixture : IDisposable
                     if (request.Url!.AbsolutePath == "/slow") await Task.Delay(12);
                     if (request.Url.AbsolutePath == "/benchmark") await Task.Delay(4);
                 }
-                if (start == 0) slowFinished = true;
             }
             response.Close();
         } catch { try { context.Response.Abort(); } catch { } }
