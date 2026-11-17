@@ -2,6 +2,10 @@ namespace IDMLite.Core.Services;
 
 public static class MediaUrl
 {
+    public static bool SharesOrigin(string? first, string? second) =>
+        Uri.TryCreate(first, UriKind.Absolute, out var a) && Uri.TryCreate(second, UriKind.Absolute, out var b) &&
+        a.Scheme is "http" or "https" && a.Scheme == b.Scheme && a.Host == b.Host && a.Port == b.Port;
+
     public static bool HasHost(string? url, params string[] domains) =>
         Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" &&
         domains.Any(d => uri.Host.Equals(d, StringComparison.OrdinalIgnoreCase) ||

@@ -1399,12 +1399,21 @@ public class SegmentedDownloader : IDisposable
             try { rawName = Uri.UnescapeDataString(rawName); } catch { }
         }
 
+        return MakeSafeFileName(rawName);
+    }
+
+    internal static string MakeSafeFileName(string name)
+    {
         foreach (char c in Path.GetInvalidFileNameChars())
         {
-            rawName = rawName.Replace(c, '_');
+            name = name.Replace(c, '_');
         }
 
-        return rawName.Trim();
+        name = name.Trim().TrimEnd('.', ' ');
+        // Windows treats these basenames as devices, including with an extension.
+        if (Regex.IsMatch(name, @"^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³]) *(?:\.|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            name = "_" + name;
+        return name;
     }
 
     public static string ResolveProperFileName(string url, string? mimeExtension)
@@ -1415,7 +1424,7 @@ public class SegmentedDownloader : IDisposable
             string rawName = Path.GetFileName(uri.LocalPath);
             if (!string.IsNullOrWhiteSpace(rawName))
             {
-                rawName = WebUtility.UrlDecode(rawName);
+                rawName = MakeSafeFileName(WebUtility.UrlDecode(rawName));
                 if (rawName.Contains('.') && !rawName.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
                 {
                     return rawName;

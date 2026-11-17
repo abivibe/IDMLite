@@ -109,7 +109,7 @@ public class HlsDownloader : IDisposable
                 Status = DownloadStatus.Downloading;
                 StatusChanged?.Invoke(this, Status);
 
-                long estimatedTotal = (await CobaltResolver.ProbeHlsSizeAsync(PlaylistUrl, ct).ConfigureAwait(false)) ?? 0;
+                long estimatedTotal = (await MediaSizeProbe.ProbeHlsSizeAsync(PlaylistUrl, ct).ConfigureAwait(false)) ?? 0;
                 long streamTicks = Stopwatch.GetTimestamp();
                 long streamBytes = 0;
                 bool ffmpegSuccess = false;

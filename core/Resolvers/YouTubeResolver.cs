@@ -1,4 +1,4 @@
-using System.Net.Http.Json;
+
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using IDMLite.Core.Services;
@@ -12,35 +12,11 @@ public class YouTubeResolver : ILinkResolver
         Timeout = TimeSpan.FromSeconds(5)
     };
 
-    private static readonly string[] InvidiousInstances = new[]
-    {
-        "https://inv.nadeko.net",
-        "https://invidious.nerdvpn.de",
-        "https://invidious.privacydev.net",
-        "https://yewtu.be",
-        "https://invidious.jing.rocks",
-        "https://invidious.f5.si"
-    };
-
-    private static readonly string[] PipedInstances = new[]
-    {
-        "https://api.piped.privacydev.net",
-        "https://pipedapi.kavin.rocks",
-        "https://pipedapi.tokhmi.xyz"
-    };
-
     public string ServiceName => "YouTube Video & Audio Resolver";
 
-    public bool CanResolve(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return false;
-        return url.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("youtube.com/shorts/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("youtube.com/embed/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("m.youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("googlevideo.com/videoplayback", StringComparison.OrdinalIgnoreCase);
-    }
+    public bool CanResolve(string url) =>
+        (MediaUrl.HasHost(url, "youtube.com", "youtu.be") && MediaUrl.IsSocialPage(url)) ||
+        (MediaUrl.HasHost(url, "googlevideo.com") && new Uri(url).AbsolutePath == "/videoplayback");
 
     public async Task<ResolvedLinkResult> ResolveAsync(string url, CancellationToken cancellationToken = default)
     {
@@ -158,7 +134,7 @@ public class YouTubeResolver : ILinkResolver
         }
 
         string title = "YouTube Video";
-        string videoId = ExtractVideoId(url);
+
 
         string? directVideoUrl = null;
         string directVideoQuality = "720p / 1080p HD";
@@ -166,53 +142,6 @@ public class YouTubeResolver : ILinkResolver
         string? directAudioUrl = null;
         string directAudioQuality = "HQ Audio (320 kbps)";
         long? directAudioSize = null;
-
-        // 1. Try Invidious & Piped API instances in parallel for real direct MP4 and Audio streams
-        if (!string.IsNullOrEmpty(videoId))
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(3.5)); // Fast 3.5s total timeout across all instances
-
-            var tasks = new List<Task<YouTubeParsedStreamInfo?>>();
-            foreach (var inst in InvidiousInstances)
-            {
-                tasks.Add(QueryInvidiousAsync(inst, videoId, cts.Token));
-            }
-            foreach (var inst in PipedInstances)
-            {
-                tasks.Add(QueryPipedAsync(inst, videoId, cts.Token));
-            }
-
-            while (tasks.Count > 0)
-            {
-                var finished = await Task.WhenAny(tasks).ConfigureAwait(false);
-                tasks.Remove(finished);
-
-                try
-                {
-                    var parsed = await finished.ConfigureAwait(false);
-                    if (parsed != null && (!string.IsNullOrEmpty(parsed.VideoUrl) || !string.IsNullOrEmpty(parsed.AudioUrl)))
-                    {
-                        if (!string.IsNullOrEmpty(parsed.Title)) title = parsed.Title;
-                        if (!string.IsNullOrEmpty(parsed.VideoUrl))
-                        {
-                            directVideoUrl = parsed.VideoUrl;
-                            directVideoQuality = parsed.VideoQuality;
-                            directVideoSize = parsed.VideoSize;
-                        }
-                        if (!string.IsNullOrEmpty(parsed.AudioUrl))
-                        {
-                            directAudioUrl = parsed.AudioUrl;
-                            directAudioQuality = parsed.AudioQuality;
-                            directAudioSize = parsed.AudioSize;
-                        }
-                        try { cts.Cancel(); } catch { }
-                        break;
-                    }
-                }
-                catch { }
-            }
-        }
 
         // 2. Fallback for Title via oEmbed if API was unreachable
         if (title == "YouTube Video")
@@ -331,245 +260,5 @@ public class YouTubeResolver : ILinkResolver
         char[] invalidChars = Path.GetInvalidFileNameChars();
         string clean = new string(name.Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
         return clean.Trim(' ', '.');
-    }
-
-    private record YouTubeParsedStreamInfo(
-        string? Title,
-        string? VideoUrl,
-        string VideoQuality,
-        long? VideoSize,
-        string? AudioUrl,
-        string AudioQuality,
-        long? AudioSize);
-
-    private static async Task<YouTubeParsedStreamInfo?> QueryInvidiousAsync(string instance, string videoId, CancellationToken ct)
-    {
-        try
-        {
-            string apiUrl = $"{instance}/api/v1/videos/{videoId}";
-            using var res = await HttpClient.GetAsync(apiUrl, ct).ConfigureAwait(false);
-            if (!res.IsSuccessStatusCode) return null;
-
-            using var stream = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            var root = doc.RootElement;
-
-            string? title = null;
-            if (root.TryGetProperty("title", out var titleEl) && !string.IsNullOrWhiteSpace(titleEl.GetString()))
-            {
-                title = CleanFileName(titleEl.GetString()!);
-            }
-
-            string? videoUrl = null;
-            string videoQuality = "720p / 1080p HD";
-            long? videoSize = null;
-
-            if (root.TryGetProperty("formatStreams", out var formatsEl) && formatsEl.ValueKind == JsonValueKind.Array)
-            {
-                var mp4List = new List<(string url, string quality, int height, long? size)>();
-                foreach (var f in formatsEl.EnumerateArray())
-                {
-                    string? fUrl = f.TryGetProperty("url", out var u) ? u.GetString() : null;
-                    string? quality = f.TryGetProperty("qualityLabel", out var q) ? q.GetString() : null;
-                    long? fSize = null;
-                    if (f.TryGetProperty("clen", out var clenProp))
-                    {
-                        if (clenProp.ValueKind == JsonValueKind.Number) fSize = clenProp.GetInt64();
-                        else if (long.TryParse(clenProp.GetString(), out long cl)) fSize = cl;
-                    }
-                    else if (f.TryGetProperty("contentLength", out var lenProp))
-                    {
-                        if (lenProp.ValueKind == JsonValueKind.Number) fSize = lenProp.GetInt64();
-                        else if (long.TryParse(lenProp.GetString(), out long cl)) fSize = cl;
-                    }
-                    if (fSize == null && fUrl != null) fSize = ExtractClenFromUrl(fUrl);
-
-                    if (!string.IsNullOrWhiteSpace(fUrl))
-                    {
-                        int height = 360;
-                        if (quality != null && int.TryParse(Regex.Match(quality, @"\d+").Value, out int h))
-                        {
-                            height = h;
-                        }
-                        mp4List.Add((CleanGoogleVideoPlaybackUrl(fUrl), quality ?? $"{height}p", height, fSize));
-                    }
-                }
-
-                var best = mp4List.OrderByDescending(x => x.height).FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(best.url))
-                {
-                    videoUrl = best.url;
-                    videoQuality = $"{best.quality} MP4 (Tek Parça)";
-                    videoSize = best.size;
-                }
-            }
-
-            string? audioUrl = null;
-            string audioQuality = "HQ Audio (320 kbps)";
-            long? audioSize = null;
-
-            if (root.TryGetProperty("adaptiveFormats", out var adaptiveEl) && adaptiveEl.ValueKind == JsonValueKind.Array)
-            {
-                var audioList = new List<(string url, int bitrate, long? size)>();
-                var videoList = new List<(string url, string quality, int height, long? size)>();
-
-                foreach (var a in adaptiveEl.EnumerateArray())
-                {
-                    string? aUrl = a.TryGetProperty("url", out var u) ? u.GetString() : null;
-                    string? type = a.TryGetProperty("type", out var t) ? t.GetString() : "";
-                    string? container = a.TryGetProperty("container", out var c) ? c.GetString() : "";
-                    if (string.IsNullOrWhiteSpace(aUrl)) continue;
-
-                    long? aSize = null;
-                    if (a.TryGetProperty("clen", out var clenProp))
-                    {
-                        if (clenProp.ValueKind == JsonValueKind.Number) aSize = clenProp.GetInt64();
-                        else if (long.TryParse(clenProp.GetString(), out long cl)) aSize = cl;
-                    }
-                    else if (a.TryGetProperty("contentLength", out var lenProp))
-                    {
-                        if (lenProp.ValueKind == JsonValueKind.Number) aSize = lenProp.GetInt64();
-                        else if (long.TryParse(lenProp.GetString(), out long cl)) aSize = cl;
-                    }
-                    if (aSize == null) aSize = ExtractClenFromUrl(aUrl);
-
-                    if (type?.Contains("audio") == true)
-                    {
-                        int bitrate = a.TryGetProperty("bitrate", out var b) ? b.GetInt32() : 128000;
-                        audioList.Add((CleanGoogleVideoPlaybackUrl(aUrl), bitrate, aSize));
-                    }
-                    else if (type?.Contains("video") == true && (container?.Contains("mp4") == true || container == "mp4"))
-                    {
-                        string? quality = a.TryGetProperty("qualityLabel", out var q) ? q.GetString() : null;
-                        int height = 720;
-                        if (quality != null && int.TryParse(Regex.Match(quality, @"\d+").Value, out int h))
-                        {
-                            height = h;
-                        }
-                        videoList.Add((CleanGoogleVideoPlaybackUrl(aUrl), quality ?? $"{height}p", height, aSize));
-                    }
-                }
-
-                var bestAudio = audioList.OrderByDescending(x => x.bitrate).FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(bestAudio.url))
-                {
-                    audioUrl = bestAudio.url;
-                    int kbps = bestAudio.bitrate > 1000 ? bestAudio.bitrate / 1000 : 320;
-                    audioQuality = $"{kbps} kbps HQ Audio";
-                    audioSize = bestAudio.size;
-                }
-
-                if (string.IsNullOrWhiteSpace(videoUrl) && videoList.Count > 0)
-                {
-                    var bestAdaptive = videoList.OrderByDescending(x => x.height).FirstOrDefault();
-                    videoUrl = bestAdaptive.url;
-                    videoQuality = $"{bestAdaptive.quality} MP4";
-                    videoSize = bestAdaptive.size;
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(videoUrl) || !string.IsNullOrWhiteSpace(audioUrl))
-            {
-                return new YouTubeParsedStreamInfo(title, videoUrl, videoQuality, videoSize, audioUrl, audioQuality, audioSize);
-            }
-        }
-        catch { }
-        return null;
-    }
-
-    private static async Task<YouTubeParsedStreamInfo?> QueryPipedAsync(string instance, string videoId, CancellationToken ct)
-    {
-        try
-        {
-            string apiUrl = $"{instance}/streams/{videoId}";
-            using var res = await HttpClient.GetAsync(apiUrl, ct).ConfigureAwait(false);
-            if (!res.IsSuccessStatusCode) return null;
-
-            using var stream = await res.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-            var root = doc.RootElement;
-
-            string? title = null;
-            if (root.TryGetProperty("title", out var titleEl) && !string.IsNullOrWhiteSpace(titleEl.GetString()))
-            {
-                title = CleanFileName(titleEl.GetString()!);
-            }
-
-            string? videoUrl = null;
-            string videoQuality = "720p / 1080p HD";
-            long? videoSize = null;
-
-            if (root.TryGetProperty("videoStreams", out var vEl) && vEl.ValueKind == JsonValueKind.Array)
-            {
-                var list = new List<(string url, string quality, int height, long? size)>();
-                foreach (var v in vEl.EnumerateArray())
-                {
-                    string? u = v.TryGetProperty("url", out var uEl) ? uEl.GetString() : null;
-                    string? q = v.TryGetProperty("quality", out var qEl) ? qEl.GetString() : null;
-                    string? fmt = v.TryGetProperty("format", out var fEl) ? fEl.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(u) || fmt != "MPEG_4") continue;
-
-                    long? size = null;
-                    if (v.TryGetProperty("contentLength", out var cEl) && cEl.ValueKind == JsonValueKind.Number)
-                    {
-                        size = cEl.GetInt64();
-                    }
-                    if (size == null) size = ExtractClenFromUrl(u);
-
-                    int height = 720;
-                    if (q != null && int.TryParse(Regex.Match(q, @"\d+").Value, out int h)) height = h;
-
-                    list.Add((CleanGoogleVideoPlaybackUrl(u), q ?? $"{height}p", height, size));
-                }
-
-                var bestV = list.OrderByDescending(x => x.height).FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(bestV.url))
-                {
-                    videoUrl = bestV.url;
-                    videoQuality = $"{bestV.quality} MP4";
-                    videoSize = bestV.size;
-                }
-            }
-
-            string? audioUrl = null;
-            string audioQuality = "HQ Audio (320 kbps)";
-            long? audioSize = null;
-
-            if (root.TryGetProperty("audioStreams", out var aEl) && aEl.ValueKind == JsonValueKind.Array)
-            {
-                var list = new List<(string url, int bitrate, long? size)>();
-                foreach (var a in aEl.EnumerateArray())
-                {
-                    string? u = a.TryGetProperty("url", out var uEl) ? uEl.GetString() : null;
-                    int bitrate = a.TryGetProperty("bitrate", out var bEl) ? bEl.GetInt32() : 128000;
-                    if (string.IsNullOrWhiteSpace(u)) continue;
-
-                    long? size = null;
-                    if (a.TryGetProperty("contentLength", out var cEl) && cEl.ValueKind == JsonValueKind.Number)
-                    {
-                        size = cEl.GetInt64();
-                    }
-                    if (size == null) size = ExtractClenFromUrl(u);
-
-                    list.Add((CleanGoogleVideoPlaybackUrl(u), bitrate, size));
-                }
-
-                var bestA = list.OrderByDescending(x => x.bitrate).FirstOrDefault();
-                if (!string.IsNullOrWhiteSpace(bestA.url))
-                {
-                    audioUrl = bestA.url;
-                    int kbps = bestA.bitrate > 1000 ? bestA.bitrate / 1000 : 320;
-                    audioQuality = $"{kbps} kbps HQ Audio";
-                    audioSize = bestA.size;
-                }
-            }
-
-            if (!string.IsNullOrWhiteSpace(videoUrl) || !string.IsNullOrWhiteSpace(audioUrl))
-            {
-                return new YouTubeParsedStreamInfo(title, videoUrl, videoQuality, videoSize, audioUrl, audioQuality, audioSize);
-            }
-        }
-        catch { }
-        return null;
     }
 }

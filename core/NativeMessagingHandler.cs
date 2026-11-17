@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Text;
+using System.IO.Pipes;
 using System.Text.Json;
 
 namespace IDMLite.Core;
@@ -10,138 +10,49 @@ public static class NativeMessagingHandler
     {
         using Stream stdin = Console.OpenStandardInput();
         using Stream stdout = Console.OpenStandardOutput();
-
-        byte[] lengthBuffer = new byte[4];
-
-        while (true)
+        try
         {
-            int bytesRead = 0;
-            while (bytesRead < 4)
+            while (true)
             {
-                int read = await stdin.ReadAsync(lengthBuffer.AsMemory(bytesRead, 4 - bytesRead)).ConfigureAwait(false);
-                if (read <= 0) return; // Browser closed connection
-                bytesRead += read;
+                string json = await NativePipe.ReadAsync(stdin, CancellationToken.None).ConfigureAwait(false);
+                string response = await ProcessNativeMessageAsync(json).ConfigureAwait(false);
+                await NativePipe.WriteAsync(stdout, response, CancellationToken.None).ConfigureAwait(false);
             }
-
-            int messageLength = BitConverter.ToInt32(lengthBuffer, 0);
-            if (messageLength <= 0 || messageLength > 1024 * 1024)
-            {
-                return;
-            }
-
-            byte[] messageBuffer = new byte[messageLength];
-            int totalMessageRead = 0;
-            while (totalMessageRead < messageLength)
-            {
-                int read = await stdin.ReadAsync(messageBuffer.AsMemory(totalMessageRead, messageLength - totalMessageRead)).ConfigureAwait(false);
-                if (read <= 0) return;
-                totalMessageRead += read;
-            }
-
-            string jsonString = Encoding.UTF8.GetString(messageBuffer);
-            string responseJson = await ProcessNativeMessageAsync(jsonString).ConfigureAwait(false);
-
-            byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
-            byte[] responseLength = BitConverter.GetBytes(responseBytes.Length);
-
-            await stdout.WriteAsync(responseLength).ConfigureAwait(false);
-            await stdout.WriteAsync(responseBytes).ConfigureAwait(false);
-            await stdout.FlushAsync().ConfigureAwait(false);
         }
+        catch (IOException) { }
     }
 
     private static async Task<string> ProcessNativeMessageAsync(string json)
     {
+        const string offline = """{"success":false,"online":false,"error":"IDMLite native bridge is unavailable."}""";
         try
         {
             using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
+            string action = doc.RootElement.TryGetProperty("action", out var value) ? value.GetString() ?? "" : "download";
+            if (action is not ("download" or "preview" or "checkStatus"))
+                return """{"success":false,"error":"Unsupported native action."}""";
 
-            string action = root.TryGetProperty("action", out var act) ? act.GetString() ?? "download" : "download";
-
-            // Relay to local HTTP IPC
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
-            var settings = new SettingsManager().Current;
-            int port = settings.IpcPort;
-            // Native host manifests restrict which browser extension can request this secret.
-            if (string.Equals(action, "getAuth", StringComparison.OrdinalIgnoreCase))
-                return JsonSerializer.Serialize(new { success = true, token = settings.IpcToken, port });
-            client.DefaultRequestHeaders.Add("X-IDMLite-Token", settings.IpcToken);
-            string endpoint = $"http://127.0.0.1:{port}";
-
-            if (string.Equals(action, "checkStatus", StringComparison.OrdinalIgnoreCase))
+            string name = NativePipe.Name(new SettingsManager().Current.IpcToken);
+            using var pipe = new NamedPipeClientStream(".", name, PipeDirection.InOut, NativePipe.Options);
+            try { await pipe.ConnectAsync(500).ConfigureAwait(false); }
+            catch (TimeoutException) when (action == "download")
             {
-                try
+                if (Environment.ProcessPath is not string exe) return offline;
+                using var started = Process.Start(new ProcessStartInfo(exe)
                 {
-                    using var statusRes = await client.GetAsync(endpoint + "/api/status").ConfigureAwait(false);
-                    if (statusRes.IsSuccessStatusCode)
-                    {
-                        return await statusRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    }
-                }
-                catch { }
-                return JsonSerializer.Serialize(new { success = false, online = false });
+                    Arguments = "--minimized", UseShellExecute = false, CreateNoWindow = true
+                });
+                await pipe.ConnectAsync(3000).ConfigureAwait(false);
             }
 
-            if (!string.Equals(action, "download", StringComparison.OrdinalIgnoreCase))
-                return JsonSerializer.Serialize(new { success = false, error = "Unsupported native action" });
-
-            try
-            {
-                using var content = new StringContent(json, Encoding.UTF8, "application/json");
-                using var res = await client.PostAsync(endpoint + "/api/download", content).ConfigureAwait(false);
-                string resBody = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                return resBody;
-            }
-            catch
-            {
-                // If IDMLite GUI is not running, launch it in the background!
-                string exePath = Process.GetCurrentProcess().MainModule?.FileName ?? "";
-                if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
-                {
-                    try
-                    {
-                        Process.Start(new ProcessStartInfo
-                        {
-                            FileName = exePath,
-                            Arguments = "--minimized",
-                            CreateNoWindow = true,
-                            UseShellExecute = false
-                        });
-                    }
-                    catch { }
-
-                    // Wait a moment and retry
-                    for (int attempt = 0; attempt < 3; attempt++)
-                    {
-                        await Task.Delay(700).ConfigureAwait(false);
-                        try
-                        {
-                            if (string.Equals(action, "checkStatus", StringComparison.OrdinalIgnoreCase))
-                            {
-                                using var statusRes = await client.GetAsync(endpoint + "/api/status").ConfigureAwait(false);
-                                if (statusRes.IsSuccessStatusCode)
-                                {
-                                    return await statusRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                                }
-                            }
-                            else
-                            {
-                                using var retryContent = new StringContent(json, Encoding.UTF8, "application/json");
-                                using var res = await client.PostAsync(endpoint + "/api/download", retryContent).ConfigureAwait(false);
-                                return await res.Content.ReadAsStringAsync().ConfigureAwait(false);
-                            }
-                        }
-                        catch { }
-                    }
-                }
-
-                return JsonSerializer.Serialize(new { success = false, online = false, message = "Could not reach IDMLite IPC server." });
-            }
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(action == "preview" ? 49 : 8));
+            await NativePipe.WriteAsync(pipe, json, timeout.Token).ConfigureAwait(false);
+            return await NativePipe.ReadAsync(pipe, timeout.Token).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or TimeoutException or
+            OperationCanceledException or JsonException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            return JsonSerializer.Serialize(new { success = false, online = false, error = "Invalid native message" });
+            return offline;
         }
     }
 }

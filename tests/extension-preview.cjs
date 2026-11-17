@@ -2,12 +2,24 @@ const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:a
 const source = fs.readFileSync(require('node:path').join(__dirname, '../extension/background.js'), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture(session = {}) {
-  const listeners = {}, calls = { previews: 0, downloads: [], previewUrls: [] }, clock = { now: Date.now() };
+  const listeners = {}, calls = { previews: 0, downloads: [], previewUrls: [], http: 0 }, clock = { now: Date.now() };
   let release, hold = true;
   const event = name => ({ addListener(fn) { listeners[name] = fn; } });
   class ClockDate extends Date { constructor(...args) { super(...(args.length ? args : [clock.now])); } static now() { return clock.now; } }
   const chrome = {
-    runtime: { onInstalled: event('install'), onMessage: event('message'), sendNativeMessage(n, m, cb) { cb({ success: true, token: 'DUMMY_AUTH', port: 49111 }); } },
+    runtime: { onInstalled: event('install'), onMessage: event('message'), async sendNativeMessage(n, request, cb) {
+      if (request.action === 'checkStatus') return cb({ online: true });
+      if (request.action === 'preview') {
+        calls.previews++;
+        calls.previewUrls.push(request.url);
+        if (hold) await new Promise(resolve => { release = resolve; });
+        return cb({ success: true, preview: { IsSuccess: true, OriginalUrl: request.url, FileSize: 90000,
+          Streams: [{ Url: request.url, IsAudioOnly: false, FileSize: 90000, FileSizeIsEstimated: true, Quality: '1080p' }] } });
+      }
+      assert.equal(request.action, 'download');
+      calls.downloads.push(request);
+      cb({ success: true });
+    } },
     storage: { onChanged: event('storage'), local: { get: async () => ({}), set() {} }, session: { get: async () => structuredClone(session), set: async data => Object.assign(session, structuredClone(data)) } },
     cookies: { getAll: async () => [], onChanged: event('cookies') },
     tabs: { onRemoved: event('removed'), onUpdated: event('updated'), sendMessage: async () => {} },
@@ -15,18 +27,7 @@ function fixture(session = {}) {
   };
   const context = vm.createContext({ console, URL, Date: ClockDate, AbortController, crypto: require('node:crypto').webcrypto,
     navigator: { userAgent: 'fixture' }, chrome, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
-    fetch: async (url, options) => {
-      if (url.endsWith('/api/status')) return { ok: true, json: async () => ({ online: true }) };
-      if (url.endsWith('/api/preview')) {
-        calls.previews++; const request = JSON.parse(options.body);
-        calls.previewUrls.push(request.url);
-        assert.equal(options.headers['X-IDMLite-Token'], 'DUMMY_AUTH');
-        if (hold) await new Promise(resolve => { release = resolve; });
-        return { ok: true, json: async () => ({ success: true, preview: { IsSuccess: true, OriginalUrl: request.url, FileSize: 90000,
-          Streams: [{ Url: request.url, IsAudioOnly: false, FileSize: 90000, FileSizeIsEstimated: true, Quality: '1080p' }] } }) };
-      }
-      calls.downloads.push(JSON.parse(options.body)); return { ok: true, json: async () => ({ success: true }) };
-    }
+    fetch: async () => { calls.http++; throw Error('Extension must use the native bridge'); }
   });
   vm.runInContext(source, context);
   const page = 'https://www.youtube.com/watch?v=fixture';
@@ -41,6 +42,7 @@ function fixture(session = {}) {
   const check = (condition, name) => { assert.ok(condition, name); console.log('PASS: ' + name); passed++; };
   const f = fixture(); await tick();
   const first = f.warm(), second = f.warm(); await tick();
+  check(f.calls.http === 0, 'native bridge sends no requests to the TCP port');
   check(f.calls.previews === 1, 'concurrent warm requests share one authenticated metadata job');
   await f.download();
   check(f.calls.downloads.length === 1 && !f.calls.downloads[0].preview, 'download handoff does not wait for pending prefetch');
@@ -48,7 +50,8 @@ function fixture(session = {}) {
   await f.download();
   const ready = f.calls.downloads.at(-1);
   check(ready.fileSize === 90000 && ready.fileSizeIsEstimated && ready.preview && ready.previewCachedAtUtc, 'ready metadata and estimated-size provenance travel with download request');
-  await f.warm(); check(f.calls.previews === 1, 'warm cache avoids another extractor request');
+  await f.warm();
+  check(f.calls.previews === 1, 'warm cache avoids another extractor request');
   const restored = fixture(f.session); await tick(); await restored.download();
   check(!!restored.calls.downloads[0].preview && restored.calls.previews === 0, 'session metadata survives MV3 worker restart');
   f.clock.now += 151000; await f.warm(); check(f.calls.previews === 2, 'expired metadata is refreshed');

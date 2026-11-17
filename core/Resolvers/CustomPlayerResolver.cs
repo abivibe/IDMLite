@@ -112,7 +112,7 @@ public class CustomPlayerResolver : ILinkResolver
             long? hlsSize = null;
             try
             {
-                hlsSize = await CobaltResolver.ProbeHlsSizeAsync(videoUrl, cancellationToken).ConfigureAwait(false);
+                hlsSize = await MediaSizeProbe.ProbeHlsSizeAsync(videoUrl, cancellationToken).ConfigureAwait(false);
             }
             catch { }
 
@@ -202,7 +202,7 @@ public class CustomPlayerResolver : ILinkResolver
         {
             try
             {
-                detectedSize = await CobaltResolver.ProbeHlsSizeAsync(videoUrl, cancellationToken).ConfigureAwait(false);
+                detectedSize = await MediaSizeProbe.ProbeHlsSizeAsync(videoUrl, cancellationToken).ConfigureAwait(false);
             }
             catch { }
         }

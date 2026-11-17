@@ -202,9 +202,8 @@ Assert(!cleanedYtUrl.Contains("range="), "CleanGoogleVideoPlaybackUrl strips chu
 
 // 8. Test TikTok, Twitter, Instagram, and CustomPlayer Resolvers
 Console.WriteLine("\n--- Testing Social & Custom Player Resolvers ---");
-var tiktokResolver = new TikTokResolver();
-Assert(tiktokResolver.CanResolve("https://www.tiktok.com/@scout2015/video/6718335390845095173"), "TikTok standard URL recognized");
-Assert(tiktokResolver.CanResolve("https://vm.tiktok.com/ZM8xy1234/"), "TikTok short URL recognized");
+Assert(DartEngineHelper.CanResolve("https://www.tiktok.com/@scout2015/video/6718335390845095173"), "TikTok standard URL recognized");
+Assert(DartEngineHelper.CanResolve("https://vm.tiktok.com/ZM8xy1234/"), "TikTok short URL recognized");
 
 var twitterResolver = new TwitterResolver();
 Assert(twitterResolver.CanResolve("https://twitter.com/NASA/status/1234567890"), "Twitter URL recognized");
@@ -392,18 +391,13 @@ var hlsTwitter = new HlsDownloader("https://video.twimg.com/ext_tw_video/123/pu/
 Assert(hlsTwitter.DestinationPath.EndsWith(".mp4"), "Twitter HLS destination forced to .mp4 container");
 Assert(hlsTwitter.FinalDestinationPath.EndsWith(".mp4"), "Twitter HLS final destination is .mp4");
 
-// 18. Test Dart Social Media Engine & Cobalt API Integration
-Console.WriteLine("\n--- Testing Dart Social Engine & Cobalt Resolver ---");
+// 18. Test Dart Social Media Engine
+Console.WriteLine("\n--- Testing Dart Social Engine ---");
 Assert(DartEngineHelper.CanResolve("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "DartEngineHelper recognizes YouTube");
 Assert(DartEngineHelper.CanResolve("https://www.instagram.com/reel/C7-X59yv123/"), "DartEngineHelper recognizes Instagram");
 Assert(DartEngineHelper.CanResolve("https://x.com/user/status/1234567890"), "DartEngineHelper recognizes X (Twitter)");
 Assert(DartEngineHelper.CanResolve("https://www.tiktok.com/@user/video/1234567890"), "DartEngineHelper recognizes TikTok");
 
-var cobaltRes = new CobaltResolver();
-Assert(cobaltRes.CanResolve("https://www.instagram.com/p/C7-X59y/"), "CobaltResolver recognizes Instagram Post");
-Assert(cobaltRes.CanResolve("https://twitter.com/user/status/123"), "CobaltResolver recognizes Twitter");
-Assert(cobaltRes.CanResolve("https://x.com/user/status/123"), "CobaltResolver recognizes X");
-Assert(cobaltRes.CanResolve("https://www.tiktok.com/@user/video/123"), "CobaltResolver recognizes TikTok");
 
 string? enginePath = DartEngineHelper.FindEnginePath();
 Assert(!string.IsNullOrEmpty(enginePath), $"Dart engine executable discovered: {enginePath}");
@@ -837,11 +831,6 @@ Assert(segDlCs.Contains("SendWithRedirectsAsync") &&
 Assert(segDlCs.Contains("buffer[0] == 0xFF && buffer[1] == 0xD8 && buffer[2] == 0xFF") &&
        segDlCs.Contains("İndirilen içerik bir video değil, resim/kapak görselidir"),
     "SegmentedDownloader inspects incoming buffer magic bytes and rejects JPEG/PNG images disguised as .mp4 videos");
-
-string cobaltCs = File.ReadAllText(Path.Combine(repoRoot, "core", "Resolvers", "CobaltResolver.cs"));
-Assert(cobaltCs.Contains("cobaltType.Equals(\"photo\"") &&
-       cobaltCs.Contains("isVideoExpected"),
-    "CobaltResolver discards photo tunnels when resolving video reels to prevent generating corrupt 41KB mp4 files");
 
 // Regression assertions for Instagram direct video focus, fast determining, canvas attachment, and click fixes
 string igResolverCode = File.ReadAllText(Path.Combine(repoRoot, "core", "Resolvers", "InstagramResolver.cs"));

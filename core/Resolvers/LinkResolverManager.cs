@@ -16,8 +16,6 @@ public class LinkResolverManager
         Register(new InstagramResolver());
         Register(new TwitterResolver());
         Register(new YouTubeResolver());
-        Register(new TikTokResolver());
-        Register(new CobaltResolver());
         Register(new CustomPlayerResolver());
     }
 

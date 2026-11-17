@@ -85,7 +85,13 @@ if (require.main === module) (async () => {
   fs.cpSync(path.join(root, 'extension'), extensionCopy, { recursive: true });
   const background = path.join(extensionCopy, 'background.js');
   // Never contact the user's installed native host or their running downloader.
-  fs.writeFileSync(background, `chrome.runtime.sendNativeMessage = (name, message, callback) => callback(message.action === 'getAuth' ? { success: true, token: 'DUMMY_BROWSER_AUTH', port: ${port} } : { success: false });\n` + fs.readFileSync(background, 'utf8'));
+  fs.writeFileSync(background, `chrome.runtime.sendNativeMessage = (name, message, callback) => {
+    const endpoint = { checkStatus: 'status', preview: 'preview', download: 'download' }[message.action];
+    if (!endpoint) { callback({ success: false }); return; }
+    fetch('http://127.0.0.1:${port}/api/' + endpoint, endpoint === 'status' ? {} : {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-IDMLite-Token': 'DUMMY_BROWSER_AUTH' }, body: JSON.stringify(message)
+    }).then(response => response.json()).then(callback, () => callback({ success: false }));
+  };\n` + fs.readFileSync(background, 'utf8'));
   const brave = process.argv.includes('--brave');
   const executable = brave ? 'C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe' : 'C:/Program Files/Google/Chrome/Application/chrome.exe';
   const browser = spawn(executable, [
@@ -103,8 +109,8 @@ if (require.main === module) (async () => {
     const workerSession = (await cdp.send('Target.attachToTarget', { targetId: worker.targetId, flatten: true })).sessionId;
     await pause(500);
     await cdp.evaluate(workerSession, `(async () => {
-      await chrome.storage.local.set({ autoIntercept: true, ipcPort: ${port} });
-      currentIpcPort = ${port}; isAutoIntercept = true;
+      await chrome.storage.local.set({ autoIntercept: true });
+      isAutoIntercept = true;
       globalThis.__ui = []; globalThis.__filenameReleases = 0;
       const originalUI = chrome.downloads.setUiOptions.bind(chrome.downloads);
       chrome.downloads.setUiOptions = (...args) => { __ui.push(args[0].enabled); return originalUI(...args); };

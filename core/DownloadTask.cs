@@ -40,13 +40,13 @@ public class DownloadTask
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(SaveDirectory)) return FileName;
-                if (string.IsNullOrWhiteSpace(FileName)) return SaveDirectory;
-                return Path.Combine(SaveDirectory, FileName);
+                string name = SegmentedDownloader.MakeSafeFileName(FileName);
+                if (string.IsNullOrEmpty(name)) name = "download.bin";
+                return Path.Combine(SaveDirectory, name);
             }
             catch
             {
-                return $"{SaveDirectory}\\{FileName}";
+                return string.Empty;
             }
         }
     }

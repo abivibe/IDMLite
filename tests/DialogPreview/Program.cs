@@ -75,6 +75,38 @@ internal static class Program
             Check((bool)validate.Invoke(renamed, null)! && renamed.CreatedTask?.SaveDirectory == custom, "Archive detection preserves an explicitly edited folder");
             renamed.Close();
 
+            var portProbe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            portProbe.Start();
+            int probePort = ((System.Net.IPEndPoint)portProbe.LocalEndpoint).Port;
+            portProbe.Stop();
+            using (var destination = new System.Net.HttpListener())
+            {
+                string editedUrl = $"http://127.0.0.1:{probePort}/replacement.bin";
+                destination.Prefixes.Add($"http://127.0.0.1:{probePort}/");
+                destination.Start();
+                var observed = Task.Run(async () =>
+                {
+                    var request = await destination.GetContextAsync();
+                    string? cookies = request.Request.Headers["Cookie"];
+                    request.Response.ContentType = "application/octet-stream";
+                    request.Response.ContentLength64 = 65536;
+                    request.Response.AddHeader("Accept-Ranges", "bytes");
+                    request.Response.Close();
+                    return cookies;
+                });
+                var edited = new AddDownloadDialog(archiveSettings, new DownloadRequest
+                {
+                    Url = "https://original.invalid/authenticated.bin", FileName = "authenticated.bin",
+                    FileSize = 65536, Cookies = "SESSION=DUMMY_WPF_COOKIE", Direct = true
+                });
+                ((TextBox)edited.FindName("TxtUrl")).Text = editedUrl;
+                PumpUntil(() => observed.IsCompleted);
+                Check(observed.GetAwaiter().GetResult() == null, "Edited URL receives no cookie from the initial browser request");
+                Check((bool)validate.Invoke(edited, null)! && edited.CreatedTask?.Url == editedUrl &&
+                    edited.CreatedTask.Cookies == null, "Submitted download retains no cookie after the URL is edited");
+                edited.Close();
+            }
+
             if (args.FirstOrDefault() == "--policies")
             {
                 var service = typeof(IDMLite.MainWindow).Assembly.GetType("IDMLite.Services.ManagedBrowserPolicy")!;

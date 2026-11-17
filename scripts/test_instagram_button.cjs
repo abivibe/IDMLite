@@ -20,7 +20,13 @@ async function until(check, name) { for (let i=0;i<100;i++) { if (await check())
   const profile=path.join(root,'installer/verification/instagram-profile-'+Date.now());fs.mkdirSync(profile,{recursive:true});
   const extension=path.join(profile,'extension');fs.cpSync(path.join(root,'extension'),extension,{recursive:true});
   const background=path.join(extension,'background.js');
-  fs.writeFileSync(background,`chrome.runtime.sendNativeMessage=(n,m,cb)=>cb(m.action==='getAuth'?{success:true,token:'DUMMY_INSTAGRAM',port:${port}}:{success:false});\n`+fs.readFileSync(background,'utf8'));
+  fs.writeFileSync(background,`chrome.runtime.sendNativeMessage = (name, message, callback) => {
+    const endpoint = { checkStatus: 'status', preview: 'preview', download: 'download' }[message.action];
+    if (!endpoint) { callback({ success: false }); return; }
+    fetch('http://127.0.0.1:${port}/api/' + endpoint, endpoint === 'status' ? {} : {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-IDMLite-Token': 'DUMMY_BROWSER_AUTH' }, body: JSON.stringify(message)
+    }).then(response => response.json()).then(callback, () => callback({ success: false }));
+  };\n`+fs.readFileSync(background,'utf8'));
   const browser=spawn('C:/Program Files/Google/Chrome/Application/chrome.exe',['--headless=new','--no-first-run','--no-default-browser-check','--enable-unsafe-extension-debugging','--remote-debugging-pipe','--user-data-dir='+profile,'about:blank'],{windowsHide:true,stdio:['ignore','ignore','ignore','pipe','pipe']});
   const cdp=new Protocol(browser);
   cdp.onEvent=event=>{
@@ -40,7 +46,7 @@ async function until(check, name) { for (let i=0;i<100;i++) { if (await check())
     const workerSession=(await cdp.send('Target.attachToTarget',{targetId:worker.targetId,flatten:true})).sessionId;
     await cdp.send('Runtime.enable',{},workerSession);
     await pause(400);
-    await cdp.evaluate(workerSession,`(async()=>{await chrome.storage.local.set({ipcPort:${port}});currentIpcPort=${port};isIDMLiteOnline=true;})()`);
+    await cdp.evaluate(workerSession,`(async()=>{isIDMLiteOnline=true;})()`);
     console.log('WORKER STATUS:',await cdp.evaluate(workerSession,`checkIDMLiteStatus(${port})`));
     const target=await cdp.send('Target.createTarget',{url:'about:blank'});
     const session=(await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true})).sessionId;

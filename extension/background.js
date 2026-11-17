@@ -2,28 +2,21 @@
 
 const browserApi = typeof browser !== "undefined" ? browser : chrome;
 
-const DEFAULT_PORT = 41718;
 const NATIVE_HOST_NAME = "com.idmlite.nativehost";
 
 // In-memory status & settings cache for instantaneous synchronous responses
 let isAutoIntercept = true;
 let isIDMLiteOnline = true;
-let currentIpcPort = DEFAULT_PORT;
-let ipcToken = "";
-let authPending = null;
-
-async function authenticateIpc() {
-  if (ipcToken) return ipcToken;
-  if (!authPending) authPending = new Promise(resolve => {
-    chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, { action: "getAuth" }, response => {
-      if (!chrome.runtime.lastError && response?.success && typeof response.token === "string") {
-        ipcToken = response.token;
-        if (response.port) currentIpcPort = response.port;
-      }
-      resolve(ipcToken);
-    });
-  }).finally(() => { authPending = null; });
-  return authPending;
+function callNative(message) {
+  return new Promise(resolve => {
+    try {
+      chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message, response => {
+        resolve(chrome.runtime.lastError ? null : response || null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 // In-memory media sniffer cache per tab
@@ -81,24 +74,12 @@ async function warmMediaPreview(tabId, rawUrl) {
   const tabGeneration = previewTabGenerations.get(tabId) || {};
   previewTabGenerations.set(tabId, tabGeneration);
   const pending = (async () => {
-    const token = await authenticateIpc();
-    if (!token) return null;
     const cookies = await gatherCookiesForDownload(url);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 48000);
-    try {
-      const response = await fetch(`http://127.0.0.1:${currentIpcPort}/api/preview`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-IDMLite-Token': token },
-        body: JSON.stringify({ url, cookies }), signal: controller.signal, cache: 'no-store'
-      });
-      if (!response.ok) return null;
-      const result = await response.json();
-      if (!result.success || generation !== previewGeneration || tabGeneration !== previewTabGenerations.get(tabId) || result.preview?.OriginalUrl !== url) return null;
-      const entry = { preview: result.preview, expires: Date.now() + PREVIEW_TTL, cachedAt: new Date().toISOString() };
-      if (previewCache.size >= 64) previewCache.delete(previewCache.keys().next().value);
-      previewCache.set(key, entry); savePreviews(); return entry;
-    } catch { return null; }
-    finally { clearTimeout(timer); }
+    const result = await callNative({ action: 'preview', url, cookies });
+    if (!result?.success || generation !== previewGeneration || tabGeneration !== previewTabGenerations.get(tabId) || result.preview?.OriginalUrl !== url) return null;
+    const entry = { preview: result.preview, expires: Date.now() + PREVIEW_TTL, cachedAt: new Date().toISOString() };
+    if (previewCache.size >= 64) previewCache.delete(previewCache.keys().next().value);
+    previewCache.set(key, entry); savePreviews(); return entry;
   })().catch(() => null).finally(() => previewPending.delete(key));
   previewPending.set(key, pending); return pending;
 }
@@ -164,13 +145,12 @@ applyDownloadUiSuppression();
 
 // Initialize default settings and periodic heartbeat
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(["autoIntercept", "showVideoBar", "ipcPort"], (res) => {
+  chrome.storage.local.get(["autoIntercept", "showVideoBar"], (res) => {
     isAutoIntercept = res.autoIntercept ?? true;
     applyDownloadUiSuppression();
     chrome.storage.local.set({
       autoIntercept: isAutoIntercept,
-      showVideoBar: res.showVideoBar ?? true,
-      ipcPort: res.ipcPort || DEFAULT_PORT
+      showVideoBar: res.showVideoBar ?? true
     });
   });
 });
@@ -182,22 +162,18 @@ chrome.storage.onChanged.addListener((changes, area) => {
       isAutoIntercept = changes.autoIntercept.newValue;
       applyDownloadUiSuppression();
     }
-    if (changes.ipcPort !== undefined) {
-      currentIpcPort = changes.ipcPort.newValue;
-    }
   }
 });
 
 async function refreshStatus() {
   try {
-    const settings = await browserApi.storage.local.get(["autoIntercept", "ipcPort"]);
+    const settings = await browserApi.storage.local.get(["autoIntercept"]);
     if (settings.autoIntercept !== undefined) {
       isAutoIntercept = settings.autoIntercept;
       applyDownloadUiSuppression();
     }
-    if (settings.ipcPort) currentIpcPort = settings.ipcPort;
 
-    const status = await checkIDMLiteStatus(currentIpcPort);
+    const status = await checkIDMLiteStatus();
     isIDMLiteOnline = status.online;
   } catch (e) {
     // Keep last known status on minor error
@@ -636,7 +612,7 @@ async function handleInterceptedDownload(downloadItem, url, requestId) {
     autoStart: false
   };
 
-  return await sendToIDMLite(payload, currentIpcPort);
+  return await sendToIDMLite(payload);
 }
 
 // 3. Messaging Bridge (Content Scripts & Popup <-> IDMLite)
@@ -651,7 +627,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.action === "checkStatus") {
-    checkIDMLiteStatus(currentIpcPort).then(status => {
+    checkIDMLiteStatus().then(status => {
       isIDMLiteOnline = status.online;
       sendResponse(status);
     });
@@ -700,7 +676,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (video?.FileSize > 0) { payload.fileSize = video.FileSize; payload.fileSizeIsEstimated = !!video.FileSizeIsEstimated; }
       }
 
-      const result = await sendToIDMLite(payload, currentIpcPort);
+      const result = await sendToIDMLite(payload);
       sendResponse(result);
     })().catch(() => sendResponse({ success: false, error: "IDMLite indirme isteği işlenemedi." }));
     return true;
@@ -714,108 +690,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-function buildCandidateEndpoints(port, path) {
-  const activePort = Number(port) || DEFAULT_PORT;
-  const endpoints = [
-    `http://127.0.0.1:${activePort}${path}`,
-    `http://localhost:${activePort}${path}`
-  ];
-  if (activePort !== DEFAULT_PORT) {
-    endpoints.push(`http://127.0.0.1:${DEFAULT_PORT}${path}`);
-    endpoints.push(`http://localhost:${DEFAULT_PORT}${path}`);
-  }
-  return endpoints;
+async function checkIDMLiteStatus() {
+  const reply = await callNative({ action: "checkStatus" });
+  return reply?.online ? { online: true, version: reply.version, activeCount: reply.activeCount } : { online: false };
 }
 
-// Helper: Check if IDMLite is online
-async function checkIDMLiteStatus(port) {
-  await authenticateIpc();
-  if (ipcToken) port = currentIpcPort;
-  const endpoints = buildCandidateEndpoints(port, "/api/status");
-  for (const endpoint of endpoints) {
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 1500);
-      const res = await fetch(endpoint, {
-        method: "GET",
-        headers: ipcToken ? { "X-IDMLite-Token": ipcToken } : {},
-        cache: "no-store",
-        signal: controller.signal
-      });
-      clearTimeout(id);
-      if (res.ok || [400, 409, 413, 503].includes(res.status)) {
-        const data = await res.json();
-        return { online: true, version: data.version, activeCount: data.activeCount };
-      }
-    } catch (e) {}
-  }
-
-  // Fallback: Check via Native Messaging Host if HTTP loopback was blocked
-  try {
-    const nativeStatus = await new Promise((resolve) => {
-      chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, { action: "checkStatus" }, (response) => {
-        if (chrome.runtime.lastError || !response) {
-          resolve(null);
-        } else {
-          resolve(response);
-        }
-      });
-    });
-    if (nativeStatus && (nativeStatus.online || nativeStatus.status === "ok")) {
-      return {
-        online: true,
-        version: nativeStatus.version || "1.0.2",
-        activeCount: nativeStatus.activeCount || 0
-      };
-    }
-  } catch (e) {}
-
-  return { online: false };
-}
-
-// Helper: Send payload to IDMLite via HTTP IPC or Native Messaging
-async function sendToIDMLite(payload, port) {
-  payload = { ...payload, requestId: payload.requestId || crypto.randomUUID() };
-  await authenticateIpc();
-  if (ipcToken) port = currentIpcPort;
-  const endpoints = ipcToken ? [`http://127.0.0.1:${port}/api/download`] : [];
-
-  // Primary attempt: Local HTTP REST Bridge (127.0.0.1 + localhost)
-  for (const endpoint of endpoints) {
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-IDMLite-Token": ipcToken },
-        body: JSON.stringify(payload),
-        cache: "no-store",
-        signal: controller.signal
-      });
-      clearTimeout(id);
-      if (res.status === 401) ipcToken = "";
-      if (res.ok) {
-        const data = await res.json();
-        isIDMLiteOnline = true;
-        if (data.success === true) return { success: true, via: "http", data: data };
-        return { success: false, error: data.error || "Download rejected" };
-      }
-    } catch (httpError) {}
-  }
-
-  // Secondary attempt: Native Messaging Host
-  try {
-    return await new Promise((resolve) => {
-      chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, payload, (response) => {
-        if (chrome.runtime.lastError || !response || response.success !== true) {
-          resolve({ success: false, error: chrome.runtime.lastError?.message || response?.error || response?.message || "Native host rejected download" });
-        } else {
-          isIDMLiteOnline = true;
-          resolve({ success: true, via: "native", data: response });
-        }
-      });
-    });
-  } catch (nativeError) {
-    return { success: false, error: "IDMLite masaüstü uygulamasına ulaşılamadı." };
-  }
+async function sendToIDMLite(payload) {
+  const reply = await callNative({ ...payload, action: "download", requestId: payload.requestId || crypto.randomUUID() });
+  if (reply?.success) isIDMLiteOnline = true;
+  else if (!reply || reply.online === false) isIDMLiteOnline = false;
+  return reply?.success
+    ? { success: true, via: "native", data: reply }
+    : { success: false, error: reply?.error || "IDMLite masaüstü uygulamasına bağlanılamadı." };
 }

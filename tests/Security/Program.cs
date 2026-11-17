@@ -93,7 +93,7 @@ try
     using var rsa = RSA.Create(2048);
     var certificateRequest = new CertificateRequest("CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
     using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
-    foreach (Type resolver in new[] { typeof(CobaltResolver), typeof(CustomPlayerResolver) })
+    foreach (Type resolver in new[] { typeof(MediaSizeProbe), typeof(CustomPlayerResolver) })
     {
         var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
         int tlsPort = ((IPEndPoint)listener.LocalEndpoint).Port;

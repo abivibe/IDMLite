@@ -6,7 +6,7 @@ const source = fs.readFileSync(require('node:path').join(__dirname, '../extensio
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const event = () => ({ addListener() {} });
 function fixture({ holdCancellation = false, saved = null, alreadyComplete = false } = {}) {
-  const calls = { pause: [], resume: [], cancel: [], posts: [], native: 0, ui: [] };
+  const calls = { pause: [], resume: [], cancel: [], posts: [], native: 0, http: 0, ui: [] };
   let finishCancellation;
   let accept;
   let mode = 'pending';
@@ -16,7 +16,14 @@ function fixture({ holdCancellation = false, saved = null, alreadyComplete = fal
     console, URL, AbortController, navigator: { userAgent: 'fixture' }, crypto: { randomUUID },
     setTimeout: () => 1, clearTimeout() {}, setInterval() {},
     chrome: {
-      runtime: { id: 'extension-id', onInstalled: event(), onMessage: event(), sendNativeMessage(name, message, cb) { calls.native++; cb(message.action === "getAuth" ? { success: true, token: "dummy" } : { success: false, online: false }); } },
+      runtime: { id: 'extension-id', onInstalled: event(), onMessage: event(), async sendNativeMessage(name, message, cb) {
+        calls.native++;
+        if (message.action === 'checkStatus') return cb({ online: true });
+        assert.equal(message.action, 'download');
+        calls.posts.push(message);
+        if (mode === 'pending') await new Promise(resolve => { accept = resolve; });
+        cb({ success: mode !== 'failure' });
+      } },
       storage: { onChanged: event(), local: { get: async () => ({}), set() {} }, session: {
         get: async () => ({ ...items }), set: async updates => Object.assign(items, updates), remove: async key => delete items[key]
       } },
@@ -31,12 +38,7 @@ function fixture({ holdCancellation = false, saved = null, alreadyComplete = fal
         async erase() {}, async removeFile() {}
       }
     },
-    fetch: async (url, opts) => {
-      if (url.endsWith('/status')) return { ok: true, json: async () => ({ online: true }) };
-      calls.posts.push(JSON.parse(opts.body));
-      if (mode === 'pending') await new Promise(resolve => { accept = resolve; });
-      return { ok: mode !== 'failure', json: async () => ({ success: mode !== 'failure' }) };
-    }
+    fetch: async () => { calls.http++; throw Error('Extension must use the native bridge'); }
   });
   vm.runInContext(source, context);
   return { context, calls, accept() { mode = 'success'; accept(); }, fail() { mode = 'failure'; }, finishCancellation() { finishCancellation(); } };
@@ -55,7 +57,7 @@ function fixture({ holdCancellation = false, saved = null, alreadyComplete = fal
   assert.equal(f.calls.ui.at(-1), true);
   assert.equal(new Set(f.calls.posts.map(p => p.requestId)).size, 1);
   assert.ok(f.calls.posts[0].requestId);
-  console.log('PASS: HTTP and native rejection resume original request and share retry ID');
+  console.log('PASS: native rejection resumes the original browser download and retains its request ID');
   let suggestions = 0;
   f.context.crushAndIntercept({ id: 2, url: 'blob:https://example.com/id' }, () => suggestions++);
   assert.equal(suggestions, 1); assert.deepEqual(f.calls.pause, [1]);
@@ -102,5 +104,6 @@ function fixture({ holdCancellation = false, saved = null, alreadyComplete = fal
   f.context.crushAndIntercept({ ...item, url: release, finalUrl: 'https://release-assets.githubusercontent.com/asset?signature=old' });
   await tick();
   assert.equal(f.calls.posts[0].url, release);
+  assert.equal(f.calls.http, 0);
   console.log('PASS: GitHub release handoff retains the URL that can issue a fresh asset redirect');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -156,6 +156,7 @@ public partial class AddDownloadDialog : Window
             return;
         }
 
+        var browserRequest = url == _initialRequest?.Url ? _initialRequest : null;
         if (string.IsNullOrWhiteSpace(TxtFileName.Text))
         {
             TxtFileName.Text = SegmentedDownloader.ExtractFileNameFromUrl(url);
@@ -183,22 +184,22 @@ public partial class AddDownloadDialog : Window
             else if (LblFileSize.Text == loc.Get("Str_Determining", "Belirleniyor..."))
                 LblFileSize.Text = loc.Get("Str_Unknown", "Bilinmiyor");
         }));
-        if (url == _initialRequest?.Url && _initialRequest.FileSize > 0)
+        if (url == browserRequest?.Url && browserRequest.FileSize > 0)
         {
-            LblFileSize.Text = FormatPreviewSize(_initialRequest.FileSize.Value, _initialRequest.FileSizeIsEstimated);
+            LblFileSize.Text = FormatPreviewSize(browserRequest.FileSize.Value, browserRequest.FileSizeIsEstimated);
         }
         else
         {
             LblFileSize.Text = isSocialPreview ? "—" : loc.Get("Str_Determining", "Belirleniyor...");
         }
 
-        if (_initialRequest?.Direct == true && url == _initialRequest.Url &&
-            !string.IsNullOrWhiteSpace(_initialRequest.FileName) && _initialRequest.FileSize > 0 &&
+        if (browserRequest?.Direct == true &&
+            !string.IsNullOrWhiteSpace(browserRequest.FileName) && browserRequest.FileSize > 0 &&
             !IDMLite.Core.Services.MediaUrl.IsSocialPage(url))
         {
             _resolvedUrl = url;
-            _resolvedCookies = _initialRequest.Cookies;
-            _probedTotalBytes = _initialRequest.FileSize.Value;
+            _resolvedCookies = browserRequest.Cookies;
+            _probedTotalBytes = browserRequest.FileSize.Value;
             LblFileSize.Text = DownloadItemViewModel.FormatBytes(_probedTotalBytes);
             PnlStreamSelection.Visibility = Visibility.Collapsed;
             return;
@@ -209,7 +210,7 @@ public partial class AddDownloadDialog : Window
         if (IDMLite.Core.Services.MediaUrl.IsSocialPage(url))
         {
             _resolvedUrl = url;
-            var hint = url == _initialRequest?.Url ? _initialRequest : null;
+            var hint = browserRequest;
             _resolvedCookies = hint?.Cookies;
             _probedTotalBytes = hint?.FileSize ?? 0;
             _probedSizeIsEstimated = hint?.FileSizeIsEstimated == true;
@@ -229,7 +230,7 @@ public partial class AddDownloadDialog : Window
         }
 
         // Fast parallel title resolution for YouTube (150ms) to update filename immediately
-        if (!(url == _initialRequest?.Url && !string.IsNullOrWhiteSpace(_initialRequest.FileName)) &&
+        if (!(url == browserRequest?.Url && !string.IsNullOrWhiteSpace(browserRequest.FileName)) &&
             IDMLite.Core.Services.MediaUrl.HasHost(url, "youtube.com", "youtu.be"))
         {
             _ = Task.Run(async () =>
@@ -339,8 +340,8 @@ public partial class AddDownloadDialog : Window
             {
                 try
                 {
-                    string pageToScrape = !string.IsNullOrWhiteSpace(_initialRequest?.Referer) && _initialRequest.Referer.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                        ? _initialRequest.Referer
+                    string pageToScrape = !string.IsNullOrWhiteSpace(browserRequest?.Referer) && browserRequest.Referer.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                        ? browserRequest.Referer
                         : url;
                     var (scrapedTitle, _) = await CustomPlayerResolver.TryScrapePageMetadataAsync(pageToScrape, ct).ConfigureAwait(false);
                     if (!string.IsNullOrWhiteSpace(scrapedTitle))
@@ -383,7 +384,7 @@ public partial class AddDownloadDialog : Window
                 if (preview.IsSuccess)
                 {
                     _resolvedUrl = url;
-                    _resolvedCookies = preview.Cookies ?? (url == _initialRequest?.Url ? _initialRequest.Cookies : null);
+                    _resolvedCookies = preview.Cookies ?? browserRequest?.Cookies;
                     if (preview.FileSize > 0)
                     {
                         _probedTotalBytes = preview.FileSize.Value;
@@ -427,49 +428,49 @@ public partial class AddDownloadDialog : Window
             return;
         }
 
-        bool isDirectGoogleDrive = _initialRequest != null && _initialRequest.Direct && url == _initialRequest.Url &&
+        bool isDirectGoogleDrive = browserRequest != null && browserRequest.Direct &&
                                    (url.Contains("takeout-download", StringComparison.OrdinalIgnoreCase) ||
                                     url.Contains("usercontent.google.com", StringComparison.OrdinalIgnoreCase) ||
                                     url.Contains("googleusercontent.com", StringComparison.OrdinalIgnoreCase));
 
-        if (isDirectGoogleDrive && url == _initialRequest?.Url && _initialRequest.FileSize > 0)
+        if (isDirectGoogleDrive && url == browserRequest?.Url && browserRequest.FileSize > 0)
         {
             _resolvedUrl = url;
-            _resolvedCookies = _initialRequest.Cookies;
-            _probedTotalBytes = _initialRequest.FileSize.Value;
-            LblFileSize.Text = DownloadItemViewModel.FormatBytes(_initialRequest.FileSize.Value);
+            _resolvedCookies = browserRequest.Cookies;
+            _probedTotalBytes = browserRequest.FileSize.Value;
+            LblFileSize.Text = DownloadItemViewModel.FormatBytes(browserRequest.FileSize.Value);
             PnlStreamSelection.Visibility = Visibility.Collapsed;
-            if (!string.IsNullOrWhiteSpace(_initialRequest.FileName))
+            if (!string.IsNullOrWhiteSpace(browserRequest.FileName))
             {
-                TxtFileName.Text = _initialRequest.FileName;
-                var cat = CategoryDetector.FromExtension(Path.GetExtension(_initialRequest.FileName));
+                TxtFileName.Text = browserRequest.FileName;
+                var cat = CategoryDetector.FromExtension(Path.GetExtension(browserRequest.FileName));
                 SelectCategory(cat);
             }
             return;
         }
 
         // Fast path for direct video streams passed from the browser extension (Instagram, TikTok, Twitter, generic)
-        bool hasDirectExtensionStream = _initialRequest != null &&
-                                        !string.IsNullOrWhiteSpace(_initialRequest.ResolvedStreamUrl) &&
-                                        _initialRequest.ResolvedStreamUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
-                                        url == _initialRequest.Url;
+        bool hasDirectExtensionStream = browserRequest != null &&
+                                        !string.IsNullOrWhiteSpace(browserRequest.ResolvedStreamUrl) &&
+                                        browserRequest.ResolvedStreamUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) &&
+                                        url == browserRequest.Url;
 
         if (hasDirectExtensionStream)
         {
-            _resolvedUrl = _initialRequest!.ResolvedStreamUrl;
-            _resolvedCookies = _initialRequest.Cookies;
+            _resolvedUrl = browserRequest!.ResolvedStreamUrl;
+            _resolvedCookies = browserRequest.Cookies;
             PnlStreamSelection.Visibility = Visibility.Collapsed;
 
-            if (!string.IsNullOrWhiteSpace(_initialRequest.FileName))
+            if (!string.IsNullOrWhiteSpace(browserRequest.FileName))
             {
-                TxtFileName.Text = _initialRequest.FileName;
-                var cat = CategoryDetector.FromExtension(Path.GetExtension(_initialRequest.FileName));
+                TxtFileName.Text = browserRequest.FileName;
+                var cat = CategoryDetector.FromExtension(Path.GetExtension(browserRequest.FileName));
                 SelectCategory(cat);
             }
 
-            if (_initialRequest.FileSize.HasValue && _initialRequest.FileSize.Value > 0)
+            if (browserRequest.FileSize.HasValue && browserRequest.FileSize.Value > 0)
             {
-                _probedTotalBytes = _initialRequest.FileSize.Value;
+                _probedTotalBytes = browserRequest.FileSize.Value;
                 LblFileSize.Text = DownloadItemViewModel.FormatBytes(_probedTotalBytes);
                 return;
             }
@@ -481,7 +482,7 @@ public partial class AddDownloadDialog : Window
                 {
                     using var sizeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                     sizeCts.CancelAfter(TimeSpan.FromMilliseconds(750));
-                    long? probedSize = await CobaltResolver.ProbeUrlSizeAsync(_resolvedUrl!, sizeCts.Token).ConfigureAwait(false);
+                    long? probedSize = await MediaSizeProbe.ProbeUrlSizeAsync(_resolvedUrl!, sizeCts.Token).ConfigureAwait(false);
                     if (probedSize.HasValue && probedSize.Value > 0)
                     {
                         Dispatcher.Invoke(() =>
@@ -522,15 +523,15 @@ public partial class AddDownloadDialog : Window
         try
         {
             using var downloader = new SegmentedDownloader(url, Path.Combine(Path.GetTempPath(), "dummy"));
-            if (_initialRequest != null)
+            if (browserRequest != null)
             {
-                downloader.Referer = _initialRequest.Referer;
-                downloader.UserAgent = _initialRequest.UserAgent;
-                downloader.Cookies = _initialRequest.Cookies;
-                downloader.SkipResolver = _initialRequest.Direct && url == _initialRequest.Url;
-                if (_initialRequest.FileSize.HasValue && _initialRequest.FileSize.Value > 0)
+                downloader.Referer = browserRequest.Referer;
+                downloader.UserAgent = browserRequest.UserAgent;
+                downloader.Cookies = browserRequest.Cookies;
+                downloader.SkipResolver = browserRequest.Direct;
+                if (browserRequest.FileSize.HasValue && browserRequest.FileSize.Value > 0)
                 {
-                    downloader.TotalBytes = _initialRequest.FileSize.Value;
+                    downloader.TotalBytes = browserRequest.FileSize.Value;
                 }
             }
 
@@ -543,13 +544,13 @@ public partial class AddDownloadDialog : Window
                 {
                     _resolvedUrl = url;
                 }
-                else if (!string.IsNullOrEmpty(_initialRequest?.ResolvedStreamUrl) &&
+                else if (!string.IsNullOrEmpty(browserRequest?.ResolvedStreamUrl) &&
                          (url.Contains("instagram.com", StringComparison.OrdinalIgnoreCase) ||
                           url.Contains("tiktok.com", StringComparison.OrdinalIgnoreCase) ||
                           url.Contains("twitter.com", StringComparison.OrdinalIgnoreCase) ||
                           url.Contains("x.com", StringComparison.OrdinalIgnoreCase)))
                 {
-                    _resolvedUrl = _initialRequest.ResolvedStreamUrl;
+                    _resolvedUrl = browserRequest.ResolvedStreamUrl;
                 }
                 else if (downloader.Url != url && !string.IsNullOrEmpty(downloader.Url))
                 {
@@ -559,7 +560,7 @@ public partial class AddDownloadDialog : Window
                 {
                     _resolvedUrl = downloader.Url;
                 }
-                _resolvedCookies = downloader.Cookies ?? _initialRequest?.Cookies;
+                _resolvedCookies = downloader.Cookies ?? browserRequest?.Cookies;
                 _probeStreams = downloader.ResolvedStreams;
                 _probedTotalBytes = downloader.TotalBytes;
 
@@ -572,20 +573,20 @@ public partial class AddDownloadDialog : Window
                 {
                     PnlStreamSelection.Visibility = Visibility.Collapsed;
                     long finalSize = downloader.TotalBytes;
-                    if (finalSize <= 0 && _initialRequest?.FileSize.HasValue == true && _initialRequest.FileSize.Value > 0)
+                    if (finalSize <= 0 && browserRequest?.FileSize.HasValue == true && browserRequest.FileSize.Value > 0)
                     {
-                        finalSize = _initialRequest.FileSize.Value;
+                        finalSize = browserRequest.FileSize.Value;
                     }
-                    if (finalSize <= 0 && !string.IsNullOrWhiteSpace(_initialRequest?.ResolvedStreamUrl) &&
-                        !string.Equals(_initialRequest.ResolvedStreamUrl, downloader.Url, StringComparison.OrdinalIgnoreCase))
+                    if (finalSize <= 0 && !string.IsNullOrWhiteSpace(browserRequest?.ResolvedStreamUrl) &&
+                        !string.Equals(browserRequest.ResolvedStreamUrl, downloader.Url, StringComparison.OrdinalIgnoreCase))
                     {
                         try
                         {
-                            using var streamProbe = new SegmentedDownloader(_initialRequest.ResolvedStreamUrl, Path.Combine(Path.GetTempPath(), "dummy"), 1)
+                            using var streamProbe = new SegmentedDownloader(browserRequest.ResolvedStreamUrl, Path.Combine(Path.GetTempPath(), "dummy"), 1)
                             {
-                                Referer = _initialRequest?.Referer,
-                                UserAgent = _initialRequest?.UserAgent,
-                                Cookies = _resolvedCookies,
+                                Referer = browserRequest?.Referer,
+                                UserAgent = browserRequest?.UserAgent,
+                                Cookies = IDMLite.Core.Services.MediaUrl.SharesOrigin(url, browserRequest?.ResolvedStreamUrl) ? _resolvedCookies : null,
                                 SkipResolver = true
                             };
                             await streamProbe.ProbeAsync(ct);
@@ -643,9 +644,9 @@ public partial class AddDownloadDialog : Window
         {
             if (!ct.IsCancellationRequested)
             {
-                if (_initialRequest?.FileSize.HasValue == true && _initialRequest.FileSize.Value > 0)
+                if (browserRequest?.FileSize.HasValue == true && browserRequest.FileSize.Value > 0)
                 {
-                    LblFileSize.Text = DownloadItemViewModel.FormatBytes(_initialRequest.FileSize.Value);
+                    LblFileSize.Text = DownloadItemViewModel.FormatBytes(browserRequest.FileSize.Value);
                 }
                 else
                 {
@@ -792,7 +793,8 @@ public partial class AddDownloadDialog : Window
     private bool ValidateAndCreateTask()
     {
         string url = TxtUrl.Text.Trim();
-        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out _))
+        if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https"))
         {
             MessageBox.Show(
                 LocalizationManager.Instance.Get("Str_InvalidUrl", "Lütfen geçerli bir indirme URL'si girin."),
@@ -803,7 +805,8 @@ public partial class AddDownloadDialog : Window
             return false;
         }
 
-        string fileName = TxtFileName.Text.Trim();
+        var browserRequest = url == _initialRequest?.Url ? _initialRequest : null;
+        string fileName = SegmentedDownloader.CleanFileName(TxtFileName.Text);
         if (string.IsNullOrWhiteSpace(fileName))
         {
             fileName = SegmentedDownloader.ExtractFileNameFromUrl(url);
@@ -838,9 +841,9 @@ public partial class AddDownloadDialog : Window
             {
                 finalTaskSize = _probedTotalBytes;
             }
-            if (finalTaskSize <= 0 && _initialRequest?.FileSize.HasValue == true && _initialRequest.FileSize.Value > 0)
+            if (finalTaskSize <= 0 && browserRequest?.FileSize.HasValue == true && browserRequest.FileSize.Value > 0)
             {
-                finalTaskSize = _initialRequest.FileSize.Value;
+                finalTaskSize = browserRequest.FileSize.Value;
             }
         }
 
@@ -870,18 +873,18 @@ public partial class AddDownloadDialog : Window
             finalUrl = url;
         }
         else if (finalUrl.Contains("googlevideo.com", StringComparison.OrdinalIgnoreCase) &&
-                 !string.IsNullOrEmpty(_initialRequest?.Referer) &&
-                 (_initialRequest.Referer.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
-                  _initialRequest.Referer.Contains("youtube.com/shorts/", StringComparison.OrdinalIgnoreCase) ||
-                  _initialRequest.Referer.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase)))
+                 !string.IsNullOrEmpty(browserRequest?.Referer) &&
+                 (browserRequest.Referer.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase) ||
+                  browserRequest.Referer.Contains("youtube.com/shorts/", StringComparison.OrdinalIgnoreCase) ||
+                  browserRequest.Referer.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase)))
         {
-            finalUrl = _initialRequest.Referer;
+            finalUrl = browserRequest.Referer;
         }
 
         CreatedTask = new DownloadTask
         {
             Url = finalUrl,
-            FallbackStreamUrl = _initialRequest?.ResolvedStreamUrl,
+            FallbackStreamUrl = browserRequest?.ResolvedStreamUrl,
             FileName = fileName,
             SaveDirectory = dir,
             Category = selectedCat,
@@ -889,10 +892,10 @@ public partial class AddDownloadDialog : Window
                 selectedCat == DownloadCategory.Other &&
                 CategoryDetector.FromExtension(Path.GetExtension(fileName)) == DownloadCategory.Other,
             TotalSize = finalTaskSize,
-            Cookies = _resolvedCookies ?? _initialRequest?.Cookies,
-            Referer = _initialRequest?.Referer,
-            UserAgent = _initialRequest?.UserAgent,
-            IsDirect = _initialRequest?.Direct == true && url == _initialRequest.Url,
+            Cookies = IDMLite.Core.Services.MediaUrl.SharesOrigin(url, finalUrl) ? _resolvedCookies ?? browserRequest?.Cookies : null,
+            Referer = browserRequest?.Referer,
+            UserAgent = browserRequest?.UserAgent,
+            IsDirect = browserRequest?.Direct == true,
             ConnectionCount = connCount,
             DateAdded = DateTime.Now
         };

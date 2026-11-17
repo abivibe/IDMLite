@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'package:http/http.dart' as http;
-import '../resolvers/cobalt_resolver.dart';
+import '../resolvers/media_size_probe.dart';
 
 class TurboDownloadProgress {
   final int downloadedBytes;
@@ -65,7 +65,7 @@ class TurboRangeDownloader {
 
     // 1. Probe server for Range support and Content-Length
     try {
-      final probeSize = await CobaltResolver.probeUrlSize(url);
+      final probeSize = await MediaSizeProbe.probeUrlSize(url);
       if (probeSize != null && probeSize > 0) {
         totalBytes = probeSize;
         supportsRange = true;

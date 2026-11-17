@@ -19,15 +19,9 @@ public class InstagramResolver : ILinkResolver
 
     public bool CanResolve(string url)
     {
-        if (string.IsNullOrWhiteSpace(url)) return false;
-        return url.Contains("instagram.com/p/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("instagram.com/reel/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("instagram.com/reels/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("instagram.com/tv/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("instagram.com/share/", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("cdninstagram.com", StringComparison.OrdinalIgnoreCase) ||
-               url.Contains("fbcdn.net", StringComparison.OrdinalIgnoreCase) ||
-               Regex.IsMatch(url, @"instagram\.com\/(?:[^\/]+\/)*(?:p|reel|reels|tv)\/[a-zA-Z0-9_-]+", RegexOptions.IgnoreCase);
+        return MediaUrl.HasHost(url, "cdninstagram.com", "fbcdn.net") ||
+               (MediaUrl.HasHost(url, "instagram.com") &&
+                (MediaUrl.IsSocialPage(url) || new Uri(url).AbsolutePath.StartsWith("/share/", StringComparison.OrdinalIgnoreCase)));
     }
 
     public static string NormalizeInstagramPostUrl(string url)
@@ -81,7 +75,7 @@ public class InstagramResolver : ILinkResolver
             {
                 using var sizeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 sizeCts.CancelAfter(TimeSpan.FromMilliseconds(1500));
-                fastSize = await CobaltResolver.ProbeUrlSizeAsync(url, sizeCts.Token).ConfigureAwait(false);
+                fastSize = await MediaSizeProbe.ProbeUrlSizeAsync(url, sizeCts.Token).ConfigureAwait(false);
             }
             catch { }
             string directTitle = "Instagram_Video_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
@@ -123,7 +117,7 @@ public class InstagramResolver : ILinkResolver
             {
                 using var sizeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 sizeCts.CancelAfter(TimeSpan.FromMilliseconds(700));
-                fastSize = await CobaltResolver.ProbeUrlSizeAsync(embedVideoUrl, sizeCts.Token).ConfigureAwait(false);
+                fastSize = await MediaSizeProbe.ProbeUrlSizeAsync(embedVideoUrl, sizeCts.Token).ConfigureAwait(false);
             }
             catch { }
 
@@ -174,22 +168,6 @@ public class InstagramResolver : ILinkResolver
             : (!string.IsNullOrEmpty(shortcode) ? $"Instagram_Video_{shortcode}" : "Instagram_Video_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
         string directVideoUrl = !string.IsNullOrWhiteSpace(embedVideoUrl) ? embedVideoUrl : normalizedUrl;
 
-        // Fallback: KaraDelik2 SnapSave Resolver (bounded 2s timeout)
-        if ((directVideoUrl == normalizedUrl || directVideoUrl == url) && !string.IsNullOrEmpty(shortcode))
-        {
-            try
-            {
-                using var snapCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                snapCts.CancelAfter(TimeSpan.FromMilliseconds(2000));
-                string? snapUrl = await ResolveSnapSaveAsync(normalizedUrl, snapCts.Token).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(snapUrl))
-                {
-                    directVideoUrl = snapUrl;
-                }
-            }
-            catch { }
-        }
-
         if (string.IsNullOrWhiteSpace(directVideoUrl) || directVideoUrl == normalizedUrl || directVideoUrl == url)
         {
             return new ResolvedLinkResult
@@ -207,7 +185,7 @@ public class InstagramResolver : ILinkResolver
         {
             using var sizeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             sizeCts.CancelAfter(TimeSpan.FromMilliseconds(700));
-            videoSize = await CobaltResolver.ProbeUrlSizeAsync(directVideoUrl, sizeCts.Token).ConfigureAwait(false);
+            videoSize = await MediaSizeProbe.ProbeUrlSizeAsync(directVideoUrl, sizeCts.Token).ConfigureAwait(false);
         }
         catch { }
 
@@ -373,121 +351,5 @@ public class InstagramResolver : ILinkResolver
             return (null, null);
         }
     }
-
-    /// <summary>
-    /// KaraDelik2 SnapSave JS Packer çözücü entegrasyonu
-    /// </summary>
-    private static async Task<string?> ResolveSnapSaveAsync(string targetUrl, CancellationToken ct)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Post, "https://snapsave.app/action.php");
-            req.Headers.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36");
-            req.Headers.Referrer = new Uri("https://snapsave.app/");
-            req.Headers.Add("Origin", "https://snapsave.app");
-
-            req.Content = new FormUrlEncodedContent(new[]
-            {
-                new KeyValuePair<string, string>("url", targetUrl)
-            });
-
-            using var resp = await HttpClient.SendAsync(req, ct).ConfigureAwait(false);
-            if (resp.IsSuccessStatusCode)
-            {
-                string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                var evalMatch = Regex.Match(body, @"\(\s*""([^""]+)""\s*,\s*[^,]*\s*,\s*""([^""]+)""\s*,\s*(\d+)\s*,\s*(\d+)");
-                if (evalMatch.Success)
-                {
-                    string h = evalMatch.Groups[1].Value;
-                    string n = evalMatch.Groups[2].Value;
-                    int t = int.Parse(evalMatch.Groups[3].Value);
-                    int e = int.Parse(evalMatch.Groups[4].Value);
-
-                    string unpackedHtml = DecodeSnapApp(h, n, t, e);
-
-                    var hrefMatches = Regex.Matches(unpackedHtml, @"href=""([^""]+)""");
-                    foreach (Match m in hrefMatches)
-                    {
-                        string link = m.Groups[1].Value;
-                        if (string.IsNullOrEmpty(link)) continue;
-                        string lower = link.ToLowerInvariant();
-                        // Strictly skip images, thumbnails, and cover photos
-                        if (lower.Contains(".jpg") || lower.Contains(".jpeg") || lower.Contains(".png") || lower.Contains(".webp") || lower.Contains("/v/t51.") || lower.Contains("/s150x150/") || lower.Contains("/s320x320/"))
-                        {
-                            continue;
-                        }
-                        if (lower.Contains(".mp4") ||
-                            lower.Contains("/v/t16.") ||
-                            lower.Contains("/v/t50.") ||
-                            lower.Contains("snapcdn") ||
-                            lower.Contains("video"))
-                        {
-                            return link.Replace("&amp;", "&");
-                        }
-                    }
-                }
-            }
-        }
-        catch { }
-        return null;
-    }
-
-    private static string DecodeSnapApp(string h, string n, int t, int e)
-    {
-        const string alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/";
-        string hCharset = e <= alphabet.Length ? alphabet.Substring(0, e) : alphabet;
-
-        var buffer = new StringBuilder();
-        int i = 0;
-        int len = h.Length;
-        char? neChar = e < n.Length ? n[e] : null;
-
-        while (i < len)
-        {
-            var s = new StringBuilder();
-            while (i < len && (neChar == null || h[i] != neChar.Value))
-            {
-                s.Append(h[i]);
-                i++;
-            }
-            i++; // skip separator
-
-            string sStr = s.ToString();
-            for (int j = 0; j < n.Length; j++)
-            {
-                sStr = sStr.Replace(n[j].ToString(), j.ToString());
-            }
-
-            if (!string.IsNullOrEmpty(sStr))
-            {
-                long intVal = 0;
-                char[] digits = sStr.ToCharArray();
-                Array.Reverse(digits);
-                for (int c = 0; c < digits.Length; c++)
-                {
-                    int idx = hCharset.IndexOf(digits[c]);
-                    if (idx != -1)
-                    {
-                        long pow = 1;
-                        for (int p = 0; p < c; p++) pow *= e;
-                        intVal += idx * pow;
-                    }
-                }
-                long code = intVal - t;
-                if (code > 0)
-                {
-                    buffer.Append((char)code);
-                }
-            }
-        }
-
-        return buffer.ToString();
-    }
-
-    private static string CleanFileName(string name)
-    {
-        char[] invalidChars = Path.GetInvalidFileNameChars();
-        string clean = new string(name.Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
-        return clean.Trim(' ', '.');
-    }
+    private static string CleanFileName(string name) => SegmentedDownloader.CleanFileName(name);
 }

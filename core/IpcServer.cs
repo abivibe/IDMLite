@@ -1,3 +1,4 @@
+using System.IO.Pipes;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -146,6 +147,9 @@ public class IpcServer : IDisposable
         try
         {
             _cts = new CancellationTokenSource();
+            _isRunning = true;
+            string pipeName = NativePipe.Name(_settingsManager.Current.IpcToken);
+            for (int i = 0; i < 8; i++) _ = ListenNativeAsync(pipeName, _cts.Token);
             _listener.Prefixes.Clear();
             _listener.Prefixes.Add($"http://127.0.0.1:{Port}/");
             try
@@ -159,8 +163,6 @@ public class IpcServer : IDisposable
                 _listener.Prefixes.Add($"http://127.0.0.1:{Port}/");
                 _listener.Start();
             }
-            _isRunning = true;
-
             _ = ListenLoopAsync(_cts.Token);
         }
         catch (Exception ex)
@@ -175,6 +177,102 @@ public class IpcServer : IDisposable
         _isRunning = false;
         _cts?.Cancel();
         try { _listener.Stop(); } catch { }
+    }
+
+    private async Task ListenNativeAsync(string name, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                using var pipe = new NamedPipeServerStream(name, PipeDirection.InOut, 8, PipeTransmissionMode.Byte, NativePipe.Options);
+                await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+                using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+                string message = await NativePipe.ReadAsync(pipe, readTimeout.Token).ConfigureAwait(false);
+                object response = await HandleNativeAsync(message, ct).ConfigureAwait(false);
+                using var writeTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                writeTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+                await NativePipe.WriteAsync(pipe, JsonSerializer.Serialize(response), writeTimeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException)
+            {
+                // Retry listening after broken connections or transient pipe creation errors.
+                await Task.Delay(100).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task<object> HandleNativeAsync(string json, CancellationToken ct)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            string action = doc.RootElement.TryGetProperty("action", out var value) ? value.GetString() ?? "" : "download";
+            return action switch
+            {
+                "checkStatus" => StatusReply(true),
+                "download" => (await DownloadAsync(ParseDownload(json)).ConfigureAwait(false)).Body,
+                "preview" => (await PreviewAsync(ParseDownload(json), ct).ConfigureAwait(false)).Body,
+                _ => new { success = false, error = "Unsupported native action." }
+            };
+        }
+        catch (Exception)
+        {
+            return new { success = false, error = "Native request failed." };
+        }
+    }
+
+    private object StatusReply(bool authorized)
+    {
+        var snapshot = _queueManager.GetTasksSnapshot();
+        return new
+        {
+            status = "ok", online = true, appName = "IDMLite", version = "1.0.2",
+            activeCount = authorized ? snapshot.Count(t => t.Status == DownloadStatus.Downloading) : 0,
+            queueCount = authorized ? snapshot.Count : 0
+        };
+    }
+
+    private static DownloadRequest? ParseDownload(string body) =>
+        JsonSerializer.Deserialize<DownloadRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+    private async Task<HandoffReply> PreviewAsync(DownloadRequest? request, CancellationToken ct)
+    {
+        if (request == null || !Services.MediaUrl.IsSocialPage(request.Url))
+            return new(400, new { success = false, error = "Unsupported preview page" });
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(46));
+        var result = await _previewResolver(request.Url, request.Cookies, timeout.Token).ConfigureAwait(false);
+        var display = new Resolvers.ResolvedLinkResult
+        {
+            IsSuccess = result.IsSuccess, OriginalUrl = request.Url, DirectUrl = request.Url,
+            SuggestedFileName = result.SuggestedFileName, FileSize = result.FileSize,
+            Streams = result.Streams.Select(stream => new Resolvers.MediaStreamInfo
+            {
+                Url = request.Url, Title = stream.Title, Format = stream.Format, Quality = stream.Quality,
+                FileSize = stream.FileSize, FileSizeIsEstimated = stream.FileSizeIsEstimated,
+                IsAudioOnly = stream.IsAudioOnly, SuggestedFileName = stream.SuggestedFileName
+            }).ToList()
+        };
+        return new(200, new { success = display.IsSuccess, preview = display });
+    }
+
+    private Task<HandoffReply> DownloadAsync(DownloadRequest? request)
+    {
+        if (request == null || !Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("http" or "https"))
+            return Task.FromResult(new HandoffReply(400, new { success = false, error = "Invalid download URL" }));
+
+        request.Url = SegmentedDownloader.NormalizeGitHubRawUrl(request.Url);
+        if (!string.IsNullOrWhiteSpace(request.FileName))
+            request.FileName = SegmentedDownloader.CleanFileName(request.FileName);
+        if (request.RequestId is { Length: > 128 })
+            return Task.FromResult(new HandoffReply(400, new { success = false, error = "Invalid request ID" }));
+
+        return GetHandoffAsync(request);
     }
 
     private async Task ListenLoopAsync(CancellationToken ct)
@@ -237,17 +335,7 @@ public class IpcServer : IDisposable
 
             if (req.HttpMethod == "GET" && path == "/api/status")
             {
-                var snapshot = _queueManager.GetTasksSnapshot();
-                var statusObj = new
-                {
-                    status = "ok",
-                    online = true,
-                    appName = "IDMLite",
-                    version = "1.0.2",
-                    activeCount = authorized ? snapshot.Count(t => t.Status == DownloadStatus.Downloading) : 0,
-                    queueCount = authorized ? snapshot.Count : 0
-                };
-                await SendJsonResponseAsync(res, 200, statusObj).ConfigureAwait(false);
+                await SendJsonResponseAsync(res, 200, StatusReply(authorized)).ConfigureAwait(false);
             }
             else if (req.HttpMethod == "GET" && path == "/api/downloads")
             {
@@ -265,59 +353,12 @@ public class IpcServer : IDisposable
                 }).ToList();
                 await SendJsonResponseAsync(res, 200, list).ConfigureAwait(false);
             }
-            else if (req.HttpMethod == "POST" && path == "/api/preview")
+            else if (req.HttpMethod == "POST" && path is "/api/preview" or "/api/download")
             {
-                var previewRequest = JsonSerializer.Deserialize<DownloadRequest>(await ReadBodyAsync(req), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                if (previewRequest == null || !Services.MediaUrl.IsSocialPage(previewRequest.Url))
-                {
-                    await SendJsonResponseAsync(res, 400, new { success = false, error = "Unsupported preview page" });
-                    return;
-                }
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_cts?.Token ?? CancellationToken.None);
-                timeout.CancelAfter(TimeSpan.FromSeconds(46));
-                var preview = await _previewResolver(previewRequest.Url, previewRequest.Cookies, timeout.Token);
-                // Browser session cache needs display metadata, never credentials or expiring CDN URLs.
-                var display = new Resolvers.ResolvedLinkResult {
-                    IsSuccess = preview.IsSuccess, OriginalUrl = previewRequest.Url, DirectUrl = previewRequest.Url,
-                    SuggestedFileName = preview.SuggestedFileName, FileSize = preview.FileSize, ErrorMessage = preview.ErrorMessage,
-                    Streams = preview.Streams.Select(stream => new Resolvers.MediaStreamInfo {
-                        Url = previewRequest.Url, Title = stream.Title, Format = stream.Format, Quality = stream.Quality,
-                        FileSize = stream.FileSize, FileSizeIsEstimated = stream.FileSizeIsEstimated,
-                        IsAudioOnly = stream.IsAudioOnly, SuggestedFileName = stream.SuggestedFileName
-                    }).ToList()
-                };
-                await SendJsonResponseAsync(res, 200, new { success = display.IsSuccess, preview = display });
-            }
-            else if (req.HttpMethod == "POST" && path == "/api/download")
-            {
-                string body = await ReadBodyAsync(req).ConfigureAwait(false);
-
-                var downloadReq = JsonSerializer.Deserialize<DownloadRequest>(body, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (downloadReq == null || !Uri.TryCreate(downloadReq.Url, UriKind.Absolute, out var downloadUri) ||
-                    downloadUri.Scheme is not ("http" or "https"))
-                {
-                    await SendJsonResponseAsync(res, 400, new { error = "Invalid download request. 'url' is required." }).ConfigureAwait(false);
-                    return;
-                }
-
-                // Normalize GitHub /blob/ and /raw/ links immediately
-                downloadReq.Url = SegmentedDownloader.NormalizeGitHubRawUrl(downloadReq.Url);
-                if (!string.IsNullOrWhiteSpace(downloadReq.FileName))
-                {
-                    downloadReq.FileName = Path.GetFileName(downloadReq.FileName);
-                    foreach (char invalid in Path.GetInvalidFileNameChars()) downloadReq.FileName = downloadReq.FileName.Replace(invalid, '_');
-                }
-
-                if (downloadReq.RequestId is { Length: > 128 })
-                {
-                    await SendJsonResponseAsync(res, 400, new { success = false, error = "Invalid request ID" });
-                    return;
-                }
-                var reply = await GetHandoffAsync(downloadReq).ConfigureAwait(false);
+                var request = ParseDownload(await ReadBodyAsync(req).ConfigureAwait(false));
+                var reply = path == "/api/preview"
+                    ? await PreviewAsync(request, _cts?.Token ?? CancellationToken.None).ConfigureAwait(false)
+                    : await DownloadAsync(request).ConfigureAwait(false);
                 await SendJsonResponseAsync(res, reply.Code, reply.Body).ConfigureAwait(false);
             }
             else if (req.HttpMethod == "POST" && path == "/api/action")

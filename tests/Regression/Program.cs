@@ -15,6 +15,14 @@ Environment.SetEnvironmentVariable("IDMLITE_DATA_DIR", folder);
 using var server = new FixtureServer();
 try
 {
+    foreach (string url in new[] {
+        "https://example.invalid/%252e%252e%255coutside.txt",
+        "https://example.invalid/C%253a%255cAudit%255coutside.txt"
+    })
+    {
+        var file = new DownloadTask { FileName = SegmentedDownloader.ExtractFileNameFromUrl(url), SaveDirectory = folder };
+        Check(Path.GetDirectoryName(Path.GetFullPath(file.FullPath)) == folder, "Encoded URI filename stays inside the selected folder");
+    }
     Check(MediaUrl.IsSocialPage("https://www.youtube.com/live/abc"), "YouTube live page");
     Check(MediaUrl.IsSocialPage("https://vm.tiktok.com/abc"), "TikTok short page");
     Check(!MediaUrl.IsSocialPage("https://example.com/?u=https://x.com/a/status/1"), "No social match in query");

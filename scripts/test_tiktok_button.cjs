@@ -18,7 +18,13 @@ async function until(check,name){for(let i=0;i<100;i++){if(await check())return;
  const media=path.join(profile,'portrait.mp4');
  execFileSync(path.join(root,'ui/ffmpeg.exe'),['-v','error','-f','lavfi','-i','color=c=blue:s=180x320:d=1','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',media],{windowsHide:true});
  const extension=path.join(profile,'extension');fs.cpSync(path.join(root,'extension'),extension,{recursive:true});
- const background=path.join(extension,'background.js');fs.writeFileSync(background,`chrome.runtime.sendNativeMessage=(n,m,cb)=>cb(m.action==='getAuth'?{success:true,token:'DUMMY_TIKTOK',port:${port}}:{success:false});\n`+fs.readFileSync(background,'utf8'));
+ const background=path.join(extension,'background.js');fs.writeFileSync(background,`chrome.runtime.sendNativeMessage = (name, message, callback) => {
+    const endpoint = { checkStatus: 'status', preview: 'preview', download: 'download' }[message.action];
+    if (!endpoint) { callback({ success: false }); return; }
+    fetch('http://127.0.0.1:${port}/api/' + endpoint, endpoint === 'status' ? {} : {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-IDMLite-Token': 'DUMMY_BROWSER_AUTH' }, body: JSON.stringify(message)
+    }).then(response => response.json()).then(callback, () => callback({ success: false }));
+  };\n`+fs.readFileSync(background,'utf8'));
  const browser=spawn('C:/Program Files/Google/Chrome/Application/chrome.exe',['--headless=new','--no-first-run','--no-default-browser-check','--enable-unsafe-extension-debugging','--remote-debugging-pipe','--user-data-dir='+profile,'about:blank'],{windowsHide:true,stdio:['ignore','ignore','ignore','pipe','pipe']});
  const cdp=new Protocol(browser);
  cdp.onEvent=event=>{
@@ -35,7 +41,7 @@ async function until(check,name){for(let i=0;i<100;i++){if(await check())return;
   const {id}=await cdp.send('Extensions.loadUnpacked',{path:extension});let worker;
   await until(async()=>{worker=(await cdp.send('Target.getTargets')).targetInfos.find(t=>t.type==='service_worker'&&t.url.startsWith('chrome-extension://'+id+'/'));return !!worker;},'worker');
   const ws=(await cdp.send('Target.attachToTarget',{targetId:worker.targetId,flatten:true})).sessionId;await pause(400);
-  await cdp.evaluate(ws,`(async()=>{await chrome.storage.local.set({ipcPort:${port}});currentIpcPort=${port};isIDMLiteOnline=true;})()`);
+  await cdp.evaluate(ws,`(async()=>{isIDMLiteOnline=true;})()`);
   const target=await cdp.send('Target.createTarget',{url:'about:blank'}),s=(await cdp.send('Target.attachToTarget',{targetId:target.targetId,flatten:true})).sessionId;
   await cdp.send('Runtime.enable',{},s);await cdp.send('Page.enable',{},s);await cdp.send('Emulation.setFocusEmulationEnabled',{enabled:true},s);await cdp.send('Page.bringToFront',{},s);await cdp.send('Fetch.enable',{patterns:[{urlPattern:'*'}]},s);await cdp.send('Page.navigate',{url:'https://www.tiktok.com/foryou'},s);
   await until(()=>cdp.evaluate(s,`[...document.querySelectorAll('.idmlite-badge-btn')].some(b=>b.getBoundingClientRect().width>0)&&document.querySelector('video').videoWidth>0`),'portrait video badge');

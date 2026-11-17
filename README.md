@@ -14,8 +14,9 @@ IDMLite is an open-source desktop application that allows you to easily and quic
 
 ## Installation
 
-- Download IDMLite_Setup_v1.0.2.exe from the Releases section.
+- Download `IDMLite_Setup_v1.0.2_Security.exe` from the Releases section.
 - Run the setup file and follow the on-screen instructions to complete the installation.
+- Reload the unpacked browser extension after updating. The browser and desktop app use a Windows user-scoped native connection.
 
 ## Browser Extension Installation
 
@@ -49,8 +50,9 @@ IDMLite, internet üzerindeki video, müzik ve dosyaları bilgisayarınıza yük
 
 ## Kurulum
 
-- Sayfanın sağ tarafındaki Releases (Sürümler) bölümünden IDMLite_Setup_v1.0.2.exe dosyasını indirin.
+- Releases (Sürümler) bölümünden `IDMLite_Setup_v1.0.2_Security.exe` dosyasını indirin.
 - Kurulum dosyasını çalıştırıp ekrandaki yönergeleri takip ederek programı kurun.
+- Güncellemeden sonra paketlenmemiş tarayıcı uzantısını yeniden yükleyin. Tarayıcı ve masaüstü uygulaması Windows kullanıcısına özel yerel bağlantıyı kullanır.
 
 ## Tarayıcı Uzantısı Kurulumu
 
