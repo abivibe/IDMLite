@@ -582,7 +582,9 @@ async function handleInterceptedDownload(downloadItem, url, requestId) {
   }
 
   const effectiveMime = (downloadItem?.mime || cachedMeta?.contentType || "").toLowerCase().split(";")[0].trim();
-  if (rawFileName && !/\.[A-Za-z0-9]{1,6}$/.test(rawFileName) && effectiveMime) {
+  if (effectiveMime === "application/x-bittorrent" && !/\.torrent$/i.test(rawFileName || "")) {
+    rawFileName = (rawFileName || "download") + ".torrent";
+  } else if (rawFileName && !/\.[A-Za-z0-9]{1,8}$/.test(rawFileName) && effectiveMime) {
     const ext = MIME_EXT[effectiveMime];
     if (ext) rawFileName += ext;
   } else if (!rawFileName && effectiveMime && MIME_EXT[effectiveMime]) {
@@ -641,6 +643,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       setTimeout(() => recentTriggeredUrls.delete(message.payload.url), 8000);
     }
     (async () => {
+      if (/^magnet:\?/i.test(message.payload.url)) {
+        sendResponse(await sendToIDMLite({ url: message.payload.url }));
+        return;
+      }
       const refUrl = message.payload.referer || "";
       let targetUrl = previewPageUrl(message.payload.url) || message.payload.url || "";
       try {

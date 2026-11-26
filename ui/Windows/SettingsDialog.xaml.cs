@@ -2,9 +2,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using IDMLite.Core;
 using IDMLite.Services;
 using Microsoft.Win32;
+using Path = System.IO.Path;
 
 namespace IDMLite.Windows;
 
@@ -13,13 +16,145 @@ public partial class SettingsDialog : Window
     private readonly SettingsManager _settingsManager;
     private readonly DownloadQueueManager _queueManager;
 
+    private readonly List<(Button NavBtn, System.Windows.Shapes.Path Icon, UIElement Page)> _tabs = new();
+    private int _currentTabIndex = 0;
+    private int _connectionsValue = 8;
+    private int _concurrentValue = 3;
+
     public SettingsDialog(SettingsManager settingsManager, DownloadQueueManager queueManager)
     {
         InitializeComponent();
         _settingsManager = settingsManager;
         _queueManager = queueManager;
 
+        _tabs.Add((TabNavConnection, IconTabConn, PageConnection));
+        _tabs.Add((TabNavFolders, IconTabFolders, PageFolders));
+        _tabs.Add((TabNavBrowser, IconTabBrowser, PageBrowser));
+        _tabs.Add((TabNavAppearance, IconTabAppearance, PageAppearance));
+        _tabs.Add((TabNavGeneral, IconTabGeneral, PageGeneral));
+
+        StateChanged += (_, _) => UpdateChromeState();
+        Loaded += (_, _) => SelectSettingsTab(0, animate: false);
+
         LoadSettingsToUI();
+    }
+
+    private void UpdateChromeState()
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            RootBorder.Padding = new Thickness(7);
+            RootBorder.BorderThickness = new Thickness(0);
+            IconWinMaximize.Data = Geometry.Parse("M2,0.5 H9.5 V8 M0.5,2.5 H7.5 V9.5 H0.5 Z");
+        }
+        else
+        {
+            RootBorder.Padding = new Thickness(0);
+            RootBorder.BorderThickness = new Thickness(1);
+            IconWinMaximize.Data = Geometry.Parse("M0.5,0.5 H9.5 V9.5 H0.5 Z");
+        }
+    }
+
+    private void BtnWinMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void BtnWinMaximize_Click(object sender, RoutedEventArgs e)
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void BtnWinClose_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void SettingsNav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string tagStr && int.TryParse(tagStr, out int index))
+        {
+            SelectSettingsTab(index, animate: true);
+        }
+    }
+
+    private void SelectSettingsTab(int index, bool animate)
+    {
+        if (index < 0 || index >= _tabs.Count) index = 0;
+        bool changed = index != _currentTabIndex;
+        int direction = index >= _currentTabIndex ? 1 : -1;
+        _currentTabIndex = index;
+
+        for (int i = 0; i < _tabs.Count; i++)
+        {
+            bool selected = i == index;
+            var (btn, icon, page) = _tabs[i];
+            btn.SetResourceReference(ForegroundProperty, selected ? "TextBrush" : "TextSecondaryBrush");
+            btn.FontWeight = selected ? FontWeights.SemiBold : FontWeights.Medium;
+            icon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, selected ? "AccentBrush" : "TextSecondaryBrush");
+            page.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // Slide active sidebar pill
+        try
+        {
+            var targetBtn = _tabs[index].NavBtn;
+            SettingsNavGrid.UpdateLayout();
+            var pt = targetBtn.TransformToAncestor(SettingsNavGrid).Transform(new System.Windows.Point(0, 0));
+            if (!animate || SettingsNavIndicator.Opacity < 0.01)
+            {
+                SettingsNavTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                SettingsNavTransform.Y = pt.Y;
+                SettingsNavIndicator.Height = targetBtn.ActualHeight > 0 ? targetBtn.ActualHeight : 36;
+                SettingsNavIndicator.Opacity = 1;
+            }
+            else
+            {
+                SettingsNavTransform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
+                {
+                    To = pt.Y,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+            }
+        }
+        catch { }
+
+        // Animate page content transition
+        if (animate && changed)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            SettingsPageSlide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation
+            {
+                From = direction * 12,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(210),
+                EasingFunction = ease
+            });
+            SettingsPagesHost.BeginAnimation(OpacityProperty, new DoubleAnimation
+            {
+                From = 0.25,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(210),
+                EasingFunction = ease
+            });
+        }
+    }
+
+    private void BtnConnDec_Click(object sender, RoutedEventArgs e)
+    {
+        _connectionsValue = Math.Clamp(_connectionsValue - 1, 1, 32);
+        TxtConnectionsVal.Text = _connectionsValue.ToString();
+    }
+
+    private void BtnConnInc_Click(object sender, RoutedEventArgs e)
+    {
+        _connectionsValue = Math.Clamp(_connectionsValue + 1, 1, 32);
+        TxtConnectionsVal.Text = _connectionsValue.ToString();
+    }
+
+    private void BtnConcDec_Click(object sender, RoutedEventArgs e)
+    {
+        _concurrentValue = Math.Clamp(_concurrentValue - 1, 1, 10);
+        TxtConcurrentVal.Text = _concurrentValue.ToString();
+    }
+
+    private void BtnConcInc_Click(object sender, RoutedEventArgs e)
+    {
+        _concurrentValue = Math.Clamp(_concurrentValue + 1, 1, 10);
+        TxtConcurrentVal.Text = _concurrentValue.ToString();
     }
 
     private void LoadSettingsToUI()
@@ -33,8 +168,10 @@ public partial class SettingsDialog : Window
                            ?? LocalizationManager.SupportedLanguages[0];
         CmbLanguage.SelectedItem = selectedLang;
 
-        SldConnections.Value = s.MaxConnectionsPerDownload;
-        SldConcurrent.Value = s.MaxConcurrentDownloads;
+        _connectionsValue = Math.Clamp(s.MaxConnectionsPerDownload, 1, 32);
+        _concurrentValue = Math.Clamp(s.MaxConcurrentDownloads, 1, 10);
+        TxtConnectionsVal.Text = _connectionsValue.ToString();
+        TxtConcurrentVal.Text = _concurrentValue.ToString();
 
         ChkSpeedLimit.IsChecked = s.SpeedLimitEnabled;
         if (s.SpeedLimitBytesPerSec >= 1024 * 1024)
@@ -51,6 +188,8 @@ public partial class SettingsDialog : Window
         ChkCloseToTray.IsChecked = s.CloseToTray;
         ChkNotification.IsChecked = s.ShowNotificationOnComplete;
         ChkSound.IsChecked = s.PlaySoundOnComplete;
+        ChkShowDownloadDialog.IsChecked = s.ShowDownloadDialog;
+        ChkAutoStartDownloads.IsChecked = s.AutoStartDownloads;
 
         TxtDirDefault.Text = s.DefaultDownloadDirectory;
         TxtMetadataDirectory.Text = s.MetadataDirectory;
@@ -68,8 +207,8 @@ public partial class SettingsDialog : Window
             case "light":
                 RbThemeLight.IsChecked = true;
                 break;
-            case "dark":
-                RbThemeDark.IsChecked = true;
+            case "system":
+                RbThemeSystem.IsChecked = true;
                 break;
             default:
                 RbThemeDark.IsChecked = true;
@@ -169,7 +308,6 @@ public partial class SettingsDialog : Window
 """;
         File.WriteAllText(chromeManifest, chromeJson);
 
-        // Registry paths for Chromium Native Messaging Host
         string[] chromeRegRoots = {
             @"Software\Google\Chrome\NativeMessagingHosts\com.idmlite.nativehost",
             @"Software\Microsoft\Edge\NativeMessagingHosts\com.idmlite.nativehost",
@@ -190,12 +328,10 @@ public partial class SettingsDialog : Window
 
         string extId = "gdcnkipjepgidojhonbcfpgagchjcdci";
 
-        // Clean up legacy sideloaded registry keys that cause Chrome to lock off-store extensions
         try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\Google\Chrome\Extensions\{extId}", false); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\Microsoft\Edge\Extensions\{extId}", false); } catch { }
         try { Registry.CurrentUser.DeleteSubKeyTree($@"Software\BraveSoftware\Brave\Extensions\{extId}", false); } catch { }
 
-        // Firefox manifest & registry
         string firefoxManifest = Path.Combine(manifestDir, "com.idmlite.nativehost.firefox.json");
         string firefoxJson = $$"""
 {
@@ -254,19 +390,22 @@ public partial class SettingsDialog : Window
     private void BtnSave_Click(object sender, RoutedEventArgs e)
     {
         var s = _settingsManager.Current;
-        try {
+        try
+        {
             if (string.IsNullOrWhiteSpace(TxtMetadataDirectory.Text) || !Path.IsPathFullyQualified(TxtMetadataDirectory.Text))
                 throw new ArgumentException("Kurtarma klasörü için tam bir klasör yolu girin.");
             if (!Path.GetFullPath(TxtMetadataDirectory.Text).Equals(s.MetadataDirectory, StringComparison.OrdinalIgnoreCase))
                 _queueManager.ChangeMetadataDirectory(TxtMetadataDirectory.Text);
-        } catch (Exception error) {
+        }
+        catch (Exception error)
+        {
             MessageBox.Show($"Kurtarma klasörü kaydedilemedi: {error.Message}", "IDMLite", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         s.ResumeInterruptedDownloads = ChkResumeInterrupted.IsChecked == true;
 
-        s.MaxConnectionsPerDownload = (int)SldConnections.Value;
-        s.MaxConcurrentDownloads = (int)SldConcurrent.Value;
+        s.MaxConnectionsPerDownload = _connectionsValue;
+        s.MaxConcurrentDownloads = _concurrentValue;
 
         s.SpeedLimitEnabled = ChkSpeedLimit.IsChecked == true;
         if (double.TryParse(TxtSpeedLimitValue.Text, out double speedVal))
@@ -279,6 +418,8 @@ public partial class SettingsDialog : Window
         s.CloseToTray = ChkCloseToTray.IsChecked == true;
         s.ShowNotificationOnComplete = ChkNotification.IsChecked == true;
         s.PlaySoundOnComplete = ChkSound.IsChecked == true;
+        s.ShowDownloadDialog = ChkShowDownloadDialog.IsChecked == true;
+        s.AutoStartDownloads = ChkAutoStartDownloads.IsChecked == true;
 
         s.DefaultDownloadDirectory = TxtDirDefault.Text;
         s.CategoryDirectories[DownloadCategory.Documents] = TxtDirDocuments.Text;

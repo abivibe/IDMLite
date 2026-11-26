@@ -17,6 +17,23 @@ public class DownloadTask
     public int ConnectionCount { get; set; } = 8;
     public DateTime DateAdded { get; set; } = DateTime.Now;
 
+    public bool UseStaging { get; set; }
+    public string? ReadyOutput { get; set; }
+    public long SpeedLimitBytesPerSecond { get; set; }
+
+    [JsonIgnore]
+    public SpeedLimiter? TransferLimiter { get; set; }
+
+    [JsonIgnore]
+    public string WorkingPath => !UseStaging ? FullPath :
+        Path.Combine(SaveDirectory, $"IDMLDownload-{Id:N}.idml");
+
+    [JsonIgnore]
+    public string MediaWorkingPath => UseStaging ? Path.ChangeExtension(WorkingPath, Path.GetExtension(FullPath)) : FullPath;
+
+    [JsonIgnore]
+    public string DisplayName => UseStaging && Status != DownloadStatus.Completed ? $"IDMLDownload-{Id:N}" : FileName;
+
     public string? Referer { get; set; }
     public string? UserAgent { get; set; }
     public string? Cookies { get; set; }

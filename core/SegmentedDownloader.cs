@@ -61,6 +61,8 @@ public class SegmentedDownloader : IDisposable
     public bool SupportsRange { get; set; }
     public string? ETag { get; private set; }
     public DateTimeOffset? LastModified { get; private set; }
+    public string? DestinationNameHint { get; set; }
+    private string EffectiveDestinationName => DestinationNameHint ?? DestinationPath;
     public string? RecoveryFilePath { get; set; }
     public string? SuggestedFileName { get; set; }
     public DownloadStatus Status { get; private set; } = DownloadStatus.Queued;
@@ -152,7 +154,7 @@ public class SegmentedDownloader : IDisposable
     /// </summary>
     public bool IsVideoDownload()
     {
-        string testPath = !string.IsNullOrEmpty(DestinationPath) ? DestinationPath : (SuggestedFileName ?? Url);
+        string testPath = !string.IsNullOrEmpty(EffectiveDestinationName) ? EffectiveDestinationName : (SuggestedFileName ?? Url);
         string ext = Path.GetExtension(testPath).ToLowerInvariant();
         if (ext is ".mp4" or ".webm" or ".mkv" or ".flv" or ".avi" or ".mov" or ".wmv" or ".m4v" or ".ts" or ".3gp")
         {
@@ -678,7 +680,7 @@ public class SegmentedDownloader : IDisposable
             DownloadedBytes = fi.Length;
 
             // MP4 duration optimization
-            if (DestinationPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+            if (EffectiveDestinationName.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
             {
                 try { await Mp4Fixer.FixDurationIfNeededAsync(DestinationPath, cancellationToken: ct).ConfigureAwait(false); } catch { }
             }
@@ -787,8 +789,8 @@ public class SegmentedDownloader : IDisposable
 
                 string? mediaType = res.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
                 if (mediaType == "text/html" &&
-                    !DestinationPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase) &&
-                    !DestinationPath.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
+                    !EffectiveDestinationName.EndsWith(".html", StringComparison.OrdinalIgnoreCase) &&
+                    !EffectiveDestinationName.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
                 {
                     string errHtml = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
                     string errorMsg = ExtractServerHtmlErrorMessage(errHtml, Url);
@@ -899,8 +901,8 @@ public class SegmentedDownloader : IDisposable
 
         string? mediaType = res.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
         if (mediaType == "text/html" &&
-            !DestinationPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase) &&
-            !DestinationPath.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
+            !EffectiveDestinationName.EndsWith(".html", StringComparison.OrdinalIgnoreCase) &&
+            !EffectiveDestinationName.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
         {
             string html = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             res.Dispose();
@@ -915,8 +917,8 @@ public class SegmentedDownloader : IDisposable
             }
 
             if (mediaType == "text/html" &&
-                !DestinationPath.EndsWith(".html", StringComparison.OrdinalIgnoreCase) &&
-                !DestinationPath.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
+                !EffectiveDestinationName.EndsWith(".html", StringComparison.OrdinalIgnoreCase) &&
+                !EffectiveDestinationName.EndsWith(".htm", StringComparison.OrdinalIgnoreCase))
             {
                 string errorMsg = ExtractServerHtmlErrorMessage(html, Url);
                 res.Dispose();
@@ -1216,7 +1218,17 @@ public class SegmentedDownloader : IDisposable
                     req.Headers.IfRange = new RangeConditionHeaderValue(LastModified.Value);
             }
 
-            var res = await HttpClientInstance.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            using var headerDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            headerDeadline.CancelAfter(TimeSpan.FromSeconds(30));
+            HttpResponseMessage res;
+            try
+            {
+                res = await HttpClientInstance.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, headerDeadline.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new TimeoutException("Timed out waiting for download response headers.");
+            }
 
             CaptureSetCookiesFromResponse(res, currentUri);
 

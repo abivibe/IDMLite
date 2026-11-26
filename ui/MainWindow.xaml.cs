@@ -4,11 +4,15 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using System.Windows.Shell;
 using IDMLite.Core;
 using IDMLite.Models;
 using IDMLite.Services;
 using IDMLite.Windows;
+using Path = System.IO.Path;
 
 namespace IDMLite;
 
@@ -22,6 +26,13 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<DownloadItemViewModel> _filteredViewModels = new();
     private readonly HashSet<Guid> _notifiedCompletedTasks = new();
 
+    private readonly List<(Button Button, System.Windows.Shapes.Path Icon, string Tag)> _navItems = new();
+    private Button? _activeNavButton;
+    private int _activeNavOrder = 0;
+    private bool _isTypesExpanded = true;
+    private double _subTypesFullHeight = 198;
+
+    private double _httpSpeed;
     private string _currentCategoryFilter = "All";
     private string _currentSearchText = "";
     private System.Windows.Forms.NotifyIcon? _notifyIcon;
@@ -34,6 +45,11 @@ public partial class MainWindow : Window
         _queueManager = queueManager;
         _ipcServer = ipcServer;
 
+        RegisterNavigationItems();
+
+        Torrents.JobOpened += AddTorrentRow;
+        Torrents.CacheDirectory = Path.Combine(settingsManager.StorageDirectory, "TorrentCache");
+        Torrents.DefaultDirectory = settingsManager.Current.DefaultDownloadDirectory;
         GridDownloads.ItemsSource = _filteredViewModels;
 
         // Populate existing items
@@ -65,13 +81,336 @@ public partial class MainWindow : Window
         {
             Dispatcher.Invoke(() =>
             {
+                UpdateHeaderForCategory(_currentCategoryFilter, animate: false);
                 UpdateStatusBar();
                 UpdateTrayContextMenu();
             });
         };
 
+        StateChanged += (_, _) => UpdateWindowStateChrome();
+        Loaded += MainWindow_Loaded;
         UpdateStatusBar();
     }
+
+    private void RegisterNavigationItems()
+    {
+        _navItems.Clear();
+        _navItems.Add((NavAll, IconAll, "All"));
+        _navItems.Add((NavUnfinished, IconUnfinished, "Unfinished"));
+        _navItems.Add((NavFinished, IconFinished, "Finished"));
+        _navItems.Add((NavTorrent, IconTorrent, "Torrent"));
+        _navItems.Add((NavTypes, IconTypes, "Types"));
+        _navItems.Add((NavCompressed, IconCompressed, "Compressed"));
+        _navItems.Add((NavDocuments, IconDocuments, "Documents"));
+        _navItems.Add((NavMusic, IconMusic, "Music"));
+        _navItems.Add((NavVideo, IconVideo, "Video"));
+        _navItems.Add((NavPrograms, IconPrograms, "Programs"));
+        _navItems.Add((NavOther, IconOther, "Other"));
+        _navItems.Add((NavMainQueue, IconMainQueue, "MainQueue"));
+    }
+
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        Torrents.Restore();
+        SubTypesPanel.UpdateLayout();
+        if (SubTypesPanel.ActualHeight > 10)
+        {
+            _subTypesFullHeight = SubTypesPanel.ActualHeight;
+        }
+        SelectCategory("All", animate: false);
+        UpdateWindowStateChrome();
+    }
+
+    private void UpdateWindowStateChrome()
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            RootWindowBorder.Padding = new Thickness(7);
+            RootWindowBorder.BorderThickness = new Thickness(0);
+            IconWinMaximize.Data = Geometry.Parse("M2,0.5 H9.5 V8 M0.5,2.5 H7.5 V9.5 H0.5 Z");
+        }
+        else
+        {
+            RootWindowBorder.Padding = new Thickness(0);
+            RootWindowBorder.BorderThickness = new Thickness(1);
+            IconWinMaximize.Data = Geometry.Parse("M0.5,0.5 H9.5 V9.5 H0.5 Z");
+        }
+    }
+
+    private void BtnWinMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void BtnWinMaximize_Click(object sender, RoutedEventArgs e)
+        => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    private void BtnWinClose_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void CmdNewDownload_Executed(object sender, ExecutedRoutedEventArgs e) => BtnAddUrl_Click(sender, e);
+
+    private void CmdSettings_Executed(object sender, ExecutedRoutedEventArgs e) => BtnSettings_Click(sender, e);
+
+    // =========================================================================
+    //  ANIMATED SIDEBAR NAVIGATION & CONTENT TRANSITIONS
+    // =========================================================================
+
+    private void SidebarNav_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string tag)
+        {
+            SelectCategory(tag, animate: true);
+        }
+    }
+
+    private void SidebarTypesToggle_Click(object sender, RoutedEventArgs e)
+    {
+        // If already on "Types", toggle collapse/expand; otherwise select "Types" and expand if collapsed
+        if (_currentCategoryFilter == "Types")
+        {
+            ToggleFileTypesSubmenu(!_isTypesExpanded);
+        }
+        else
+        {
+            if (!_isTypesExpanded)
+            {
+                ToggleFileTypesSubmenu(true);
+            }
+            SelectCategory("Types", animate: true);
+        }
+    }
+
+    private void ToggleFileTypesSubmenu(bool expand)
+    {
+        _isTypesExpanded = expand;
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        var duration = TimeSpan.FromMilliseconds(220);
+
+        // Rotate chevron smoothly
+        var rotateAnim = new DoubleAnimation
+        {
+            To = expand ? 0 : -90,
+            Duration = duration,
+            EasingFunction = ease
+        };
+        TypesChevronRotate.BeginAnimation(RotateTransform.AngleProperty, rotateAnim);
+
+        if (expand)
+        {
+            SubTypesPanel.Visibility = Visibility.Visible;
+            double targetH = _subTypesFullHeight > 10 ? _subTypesFullHeight : 198;
+            var heightAnim = new DoubleAnimation
+            {
+                From = double.IsNaN(SubTypesPanel.Height) ? 0 : SubTypesPanel.Height,
+                To = targetH,
+                Duration = duration,
+                EasingFunction = ease
+            };
+            heightAnim.Completed += (_, _) =>
+            {
+                SubTypesPanel.BeginAnimation(HeightProperty, null);
+                SubTypesPanel.Height = double.NaN;
+                if (_activeNavButton != null) PositionNavIndicator(_activeNavButton, animate: true);
+            };
+            var opacityAnim = new DoubleAnimation
+            {
+                From = SubTypesPanel.Opacity,
+                To = 1.0,
+                Duration = duration,
+                EasingFunction = ease
+            };
+            SubTypesPanel.BeginAnimation(HeightProperty, heightAnim);
+            SubTypesPanel.BeginAnimation(OpacityProperty, opacityAnim);
+        }
+        else
+        {
+            if (SubTypesPanel.ActualHeight > 10)
+            {
+                _subTypesFullHeight = SubTypesPanel.ActualHeight;
+            }
+            var heightAnim = new DoubleAnimation
+            {
+                From = SubTypesPanel.ActualHeight,
+                To = 0,
+                Duration = duration,
+                EasingFunction = ease
+            };
+            heightAnim.Completed += (_, _) =>
+            {
+                if (!_isTypesExpanded)
+                {
+                    SubTypesPanel.Visibility = Visibility.Collapsed;
+                    if (_activeNavButton != null) PositionNavIndicator(_activeNavButton, animate: true);
+                }
+            };
+            var opacityAnim = new DoubleAnimation
+            {
+                From = SubTypesPanel.Opacity,
+                To = 0.0,
+                Duration = TimeSpan.FromMilliseconds(160),
+                EasingFunction = ease
+            };
+            SubTypesPanel.BeginAnimation(HeightProperty, heightAnim);
+            SubTypesPanel.BeginAnimation(OpacityProperty, opacityAnim);
+        }
+    }
+
+    private void SelectCategory(string tag, bool animate)
+    {
+        int newIndex = _navItems.FindIndex(item => item.Tag == tag);
+        if (newIndex < 0) newIndex = 0;
+
+        var targetItem = _navItems[newIndex];
+        bool changed = !string.Equals(_currentCategoryFilter, targetItem.Tag, StringComparison.Ordinal);
+        int direction = newIndex >= _activeNavOrder ? 1 : -1;
+
+        _activeNavOrder = newIndex;
+        _activeNavButton = targetItem.Button;
+        _currentCategoryFilter = targetItem.Tag;
+
+        // Update visual active styling across sidebar items
+        foreach (var (button, icon, itemTag) in _navItems)
+        {
+            bool isSelected = itemTag == tag;
+            button.SetResourceReference(ForegroundProperty, isSelected ? "TextBrush" : "TextSecondaryBrush");
+            button.FontWeight = isSelected ? FontWeights.SemiBold : FontWeights.Medium;
+            icon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, isSelected ? "AccentBrush" : "TextSecondaryBrush");
+        }
+
+        // Slide the active indicator pill smoothly to the clicked item
+        PositionNavIndicator(targetItem.Button, animate);
+
+        // Toggle BitTorrent workspace panel visibility
+        Torrents.Visibility = tag == "Torrent" ? Visibility.Visible : Visibility.Collapsed;
+
+        // Refresh filtered list
+        ApplyFilter();
+
+        // Update header title + play animated transition on content & header
+        UpdateHeaderForCategory(tag, animate && changed);
+
+        if (animate && changed)
+        {
+            AnimateWorkspaceTransition(direction);
+        }
+    }
+
+    private void PositionNavIndicator(Button targetButton, bool animate)
+    {
+        if (!IsLoaded || targetButton.Visibility != Visibility.Visible) return;
+
+        try
+        {
+            SidebarNavGrid.UpdateLayout();
+            var transform = targetButton.TransformToAncestor(SidebarNavGrid);
+            var pt = transform.Transform(new System.Windows.Point(0, 0));
+            double targetY = pt.Y;
+            double targetHeight = targetButton.ActualHeight > 0 ? targetButton.ActualHeight : 34;
+
+            if (!animate || NavSelectionIndicator.Opacity < 0.01)
+            {
+                NavIndicatorTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                NavSelectionIndicator.BeginAnimation(HeightProperty, null);
+                NavIndicatorTransform.Y = targetY;
+                NavSelectionIndicator.Height = targetHeight;
+                NavSelectionIndicator.Opacity = 1;
+                return;
+            }
+
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            var slideAnim = new DoubleAnimation
+            {
+                To = targetY,
+                Duration = TimeSpan.FromMilliseconds(240),
+                EasingFunction = ease
+            };
+            var heightAnim = new DoubleAnimation
+            {
+                To = targetHeight,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = ease
+            };
+            var accentPulse = new DoubleAnimation
+            {
+                From = 0.55,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(260),
+                EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.45 }
+            };
+
+            NavIndicatorTransform.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+            NavSelectionIndicator.BeginAnimation(HeightProperty, heightAnim);
+            NavAccentScale.BeginAnimation(ScaleTransform.ScaleYProperty, accentPulse);
+        }
+        catch { }
+    }
+
+    private void AnimateWorkspaceTransition(int direction)
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        var slideAnim = new DoubleAnimation
+        {
+            From = direction * 15,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(240),
+            EasingFunction = ease
+        };
+        var fadeAnim = new DoubleAnimation
+        {
+            From = 0.22,
+            To = 1.0,
+            Duration = TimeSpan.FromMilliseconds(230),
+            EasingFunction = ease
+        };
+
+        ContentSlideTransform.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+        WorkspaceContentHost.BeginAnimation(OpacityProperty, fadeAnim);
+    }
+
+    private void UpdateHeaderForCategory(string tag, bool animate)
+    {
+        var loc = LocalizationManager.Instance;
+        string title = tag switch
+        {
+            "All" or "Types" => loc.Get("Str_Downloads", "İndirilenler"),
+            "Unfinished" => loc.Get("Str_ActiveDownloadsNav", "Aktif İndirmeler"),
+            "Finished" => loc.Get("Str_Finished", "Tamamlananlar"),
+            "Torrent" => "BitTorrent",
+            "Compressed" => loc.Get("Str_Compressed", "Sıkıştırılmış"),
+            "Documents" => loc.Get("Str_Documents", "Belgeler"),
+            "Music" => loc.Get("Str_Music", "Müzik"),
+            "Video" => loc.Get("Str_Video", "Video"),
+            "Programs" => loc.Get("Str_Programs", "Programlar"),
+            "Other" => loc.Get("Str_Other", "Diğer"),
+            "MainQueue" => loc.Get("Str_MainQueue", "Ana Kuyruk"),
+            _ => loc.Get("Str_Downloads", "İndirilenler")
+        };
+
+        LblPageTitle.Text = title;
+        LblPageSubtitle.Text = loc.Get("Str_SubtitleManageFiles", "Dosyalarınızı yönetin");
+
+        if (animate)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            HeaderSlideTransform.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation
+            {
+                From = -10,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(210),
+                EasingFunction = ease
+            });
+            HeaderTitlePanel.BeginAnimation(OpacityProperty, new DoubleAnimation
+            {
+                From = 0.25,
+                To = 1.0,
+                Duration = TimeSpan.FromMilliseconds(210),
+                EasingFunction = ease
+            });
+        }
+    }
+
+    // =========================================================================
+    //  IPC & TORRENT INTEGRATION
+    // =========================================================================
 
     private async Task<bool> OpenDownloadWindowAsync(DownloadRequest req, CancellationToken cancellationToken)
     {
@@ -82,6 +421,12 @@ public partial class MainWindow : Window
             try
             {
                 if (opened.Task.IsCompleted) return;
+                if (TorrentSource.Matches(req.Url, req.FileName))
+                {
+                    ShowTorrent(req.Url, req.Cookies);
+                    opened.TrySetResult(true);
+                    return;
+                }
                 var dialog = new AddDownloadDialog(_settingsManager, req) { Topmost = true };
                 if (opened.Task.IsCompleted) return;
                 dialog.ContentRendered += (_, _) =>
@@ -91,7 +436,9 @@ public partial class MainWindow : Window
                         if (!dialog.IsVisible || !opened.TrySetResult(true)) dialog.Close();
                     }
                 };
-                if (dialog.ShowDialog() == true && opened.Task.IsCompletedSuccessfully && opened.Task.Result && dialog.CreatedTask != null)
+                bool? accepted = dialog.ShowDialog();
+                if (accepted == true && dialog.TorrentUrl != null) { ShowTorrent(dialog.TorrentUrl); return; }
+                if (accepted == true && opened.Task.IsCompletedSuccessfully && opened.Task.Result && dialog.CreatedTask != null)
                 {
                     dialog.CreatedTask.OriginRequestId = req.RequestId;
                     _queueManager.Add(dialog.CreatedTask, dialog.AutoStart);
@@ -118,6 +465,37 @@ public partial class MainWindow : Window
         return await opened.Task.ConfigureAwait(false);
     }
 
+    private void AddTorrentRow(TorrentJob job)
+    {
+        var row = new DownloadItemViewModel(job.Summary, isSingleFile: false);
+        _allViewModels.Insert(0, row);
+        var previousStatus = row.Status;
+        string previousName = row.FileName;
+        void Refresh()
+        {
+            row.Refresh();
+            bool refilter = previousStatus != row.Status && (_currentCategoryFilter is "Finished" or "Unfinished") ||
+                previousName != row.FileName && _currentSearchText.Length > 0;
+            previousStatus = row.Status;
+            previousName = row.FileName;
+            if (refilter) ApplyFilter();
+            else UpdateStatusBar();
+        }
+        job.Changed += Refresh;
+        job.Closed += () =>
+        {
+            job.Changed -= Refresh;
+            _allViewModels.Remove(row);
+            ApplyFilter();
+        };
+        if (IsLoaded) SelectCategory("All", animate: true);
+        TxtSearch.Clear();
+        ApplyFilter();
+        GridDownloads.SelectedItem = row;
+    }
+
+    private TorrentJob? SelectedTorrent() => Torrents.Jobs.FirstOrDefault(job => job.Summary == GetSelectedViewModel()?.Task);
+
     private void QueueManager_TaskAdded(object? sender, DownloadTask task)
     {
         Dispatcher.Invoke(() =>
@@ -138,7 +516,6 @@ public partial class MainWindow : Window
 
             if (task.Status == DownloadStatus.Completed && _notifiedCompletedTasks.Add(task.Id))
             {
-                // Highlight/flash behind the taskbar icon when download finishes
                 ShellHelper.FlashTaskbarIcon(this, 5);
                 if (_settingsManager.Current.ShowNotificationOnComplete)
                 {
@@ -175,9 +552,15 @@ public partial class MainWindow : Window
     {
         Dispatcher.Invoke(() =>
         {
-            string prefix = LocalizationManager.Instance.Get("Str_TotalSpeed", "⬇️ Total Speed:");
-            LblTotalSpeed.Text = $"{prefix} {DownloadItemViewModel.FormatBytes((long)totalSpeed)}/s";
+            _httpSpeed = totalSpeed;
+            UpdateTotalSpeed();
         });
+    }
+
+    private void UpdateTotalSpeed()
+    {
+        double speed = _httpSpeed + Torrents.Jobs.Sum(job => job.Summary.SpeedBytesPerSec);
+        LblTotalSpeed.Text = $"{LocalizationManager.Instance.Get("Str_TotalSpeedClean", "Toplam Hız:")} {DownloadItemViewModel.FormatBytes((long)speed)}/s";
     }
 
     private void UpdateStatusBar()
@@ -186,16 +569,28 @@ public partial class MainWindow : Window
 
         var loc = LocalizationManager.Instance;
         int active = _allViewModels.Count(v => v.Status is DownloadStatus.Downloading or DownloadStatus.Connecting or DownloadStatus.Assembling or DownloadStatus.Verifying);
+        int unfinished = _allViewModels.Count(v => v.Status != DownloadStatus.Completed);
+        int completed = _allViewModels.Count(v => v.Status == DownloadStatus.Completed);
+        int torrents = _allViewModels.Count(v => !v.IsSingleFile);
         int total = _allViewModels.Count;
-        LblActiveDownloads.Text = $"{loc.Get("Str_ActiveDownloads", "Active:")} {active} | {loc.Get("Str_Total", "Total:")} {total}";
+
+        // Sidebar counts
+        TxtCountAll.Text = total.ToString();
+        TxtCountActive.Text = unfinished.ToString();
+        TxtCountCompleted.Text = completed.ToString();
+        TxtCountTorrent.Text = torrents > 0 ? torrents.ToString() : "";
+
+        // Bottom Status Bar
+        LblIpcStatus.Text = string.Format(loc.Get("Str_BrowserConnectedFmt", "Tarayıcı Köprüsü: Bağlı (Port {0})"), _settingsManager.Current.IpcPort);
+        LblActiveDownloads.Text = $"{loc.Get("Str_ActiveDownloads", "Aktif:")} {active}";
+        LblItemCount.Text = $"{loc.Get("Str_Total", "Toplam:")} {total}";
 
         var s = _settingsManager.Current;
-        LblSpeedLimitStatus.Text = s.SpeedLimitEnabled
-            ? $"{loc.Get("Str_SpeedLimit", "⚡ Speed Limit:")} {DownloadItemViewModel.FormatBytes(s.SpeedLimitBytesPerSec)}/s"
-            : $"{loc.Get("Str_SpeedLimit", "⚡ Speed Limit:")} {loc.Get("Str_Unlimited", "Unlimited")}";
+        LblSpeedLimitStatus.Text = s.SpeedLimitEnabled && s.SpeedLimitBytesPerSec > 0
+            ? $"• {loc.Get("Str_SpeedLimit", "Hız Sınırı:")} {DownloadItemViewModel.FormatBytes(s.SpeedLimitBytesPerSec)}/s"
+            : "";
 
-        LblItemCount.Text = $"{_filteredViewModels.Count} {loc.Get("Str_FilesCount", "files")}";
-
+        UpdateTotalSpeed();
         UpdateMainTaskbarProgress();
     }
 
@@ -247,6 +642,7 @@ public partial class MainWindow : Window
         // Category filter
         query = _currentCategoryFilter switch
         {
+            "Torrent" => query.Where(v => !v.IsSingleFile),
             "Unfinished" => query.Where(v => v.Status != DownloadStatus.Completed),
             "Finished" => query.Where(v => v.Status == DownloadStatus.Completed),
             "Compressed" => query.Where(v => v.Category == DownloadCategory.Compressed),
@@ -274,21 +670,72 @@ public partial class MainWindow : Window
         UpdateStatusBar();
     }
 
-    private void TreeCategories_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    private void ShowTorrent(string source, string? cookies = null)
     {
-        if (!IsLoaded) return;
-
-        if (e.NewValue is TreeViewItem item && item.Tag is string tag)
-        {
-            _currentCategoryFilter = tag;
-            ApplyFilter();
-        }
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        Torrents.Open(source, cookies);
     }
 
     private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
         _currentSearchText = TxtSearch.Text.Trim();
+        SearchPlaceholder.Visibility = string.IsNullOrEmpty(TxtSearch.Text) ? Visibility.Visible : Visibility.Collapsed;
+        IconSearchSuffix.Data = string.IsNullOrEmpty(TxtSearch.Text)
+            ? Geometry.Parse("M1,3.5 H13 M1,9.5 H13 M4,1.5 V5.5 M9.5,7.5 V11.5")
+            : Geometry.Parse("M2,2 L11,11 M11,2 L2,11");
         ApplyFilter();
+    }
+
+    private void BtnSearchFilterOrClear_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(TxtSearch.Text))
+        {
+            TxtSearch.Clear();
+            TxtSearch.Focus();
+        }
+        else
+        {
+            BtnToolsDropdown_Click(sender, e);
+        }
+    }
+
+    private void ChkSelectAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox chk)
+        {
+            bool check = chk.IsChecked == true;
+            foreach (var item in _filteredViewModels)
+            {
+                item.IsChecked = check;
+            }
+        }
+    }
+
+    private void RowOverflow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.DataContext is DownloadItemViewModel vm)
+        {
+            GridDownloads.SelectedItem = vm;
+            if (FindResource("DownloadRowContextMenu") is ContextMenu menu)
+            {
+                menu.DataContext = vm;
+                menu.PlacementTarget = btn;
+                menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                menu.IsOpen = true;
+            }
+        }
+    }
+
+    private void BtnToolsDropdown_Click(object sender, RoutedEventArgs e)
+    {
+        if (FindResource("ToolsDropdownMenu") is ContextMenu menu)
+        {
+            menu.PlacementTarget = BtnToolsDropdown;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen = true;
+        }
     }
 
     private DownloadItemViewModel? GetSelectedViewModel()
@@ -296,12 +743,22 @@ public partial class MainWindow : Window
         return GridDownloads.SelectedItem as DownloadItemViewModel;
     }
 
+    private List<DownloadItemViewModel> GetTargetViewModels()
+    {
+        var checkedItems = _filteredViewModels.Where(v => v.IsChecked).ToList();
+        if (checkedItems.Count > 0) return checkedItems;
+        var selected = GetSelectedViewModel();
+        return selected != null ? new List<DownloadItemViewModel> { selected } : new List<DownloadItemViewModel>();
+    }
+
     private void BtnAddUrl_Click(object sender, RoutedEventArgs e)
     {
         try
         {
             var dialog = new AddDownloadDialog(_settingsManager) { Owner = this };
-            if (dialog.ShowDialog() == true && dialog.CreatedTask != null)
+            bool? accepted = dialog.ShowDialog();
+            if (accepted == true && dialog.TorrentUrl != null) { ShowTorrent(dialog.TorrentUrl); return; }
+            if (accepted == true && dialog.CreatedTask != null)
             {
                 _queueManager.Add(dialog.CreatedTask, dialog.AutoStart);
                 if (dialog.AutoStart)
@@ -326,47 +783,53 @@ public partial class MainWindow : Window
 
     private void BtnResume_Click(object sender, RoutedEventArgs e)
     {
-        var selected = GetSelectedViewModel();
-        if (selected != null)
+        foreach (var item in GetTargetViewModels())
         {
-            _queueManager.Start(selected.Task);
+            var torrent = Torrents.Jobs.FirstOrDefault(j => j.Summary == item.Task);
+            if (torrent != null) torrent.Resume();
+            else _queueManager.Start(item.Task);
         }
     }
 
     private void BtnPause_Click(object sender, RoutedEventArgs e)
     {
-        var selected = GetSelectedViewModel();
-        if (selected != null)
+        foreach (var item in GetTargetViewModels())
         {
-            _queueManager.Pause(selected.Task);
+            var torrent = Torrents.Jobs.FirstOrDefault(j => j.Summary == item.Task);
+            if (torrent != null) torrent.Pause();
+            else _queueManager.Pause(item.Task);
         }
     }
 
     private void BtnStopAll_Click(object sender, RoutedEventArgs e)
     {
+        foreach (var job in Torrents.Jobs) job.Pause();
         _queueManager.PauseAll();
     }
 
     private void BtnResumeAll_Click(object sender, RoutedEventArgs e)
     {
+        foreach (var job in Torrents.Jobs.Where(j => j.Summary.Status == DownloadStatus.Paused)) job.Resume();
         _queueManager.ResumeAll();
     }
 
-    private void BtnDelete_Click(object sender, RoutedEventArgs e)
+    private async void BtnDelete_Click(object sender, RoutedEventArgs e)
     {
-        var selected = GetSelectedViewModel();
-        if (selected != null)
-        {
-            var res = MessageBox.Show(
-                $"'{selected.FileName}' indirmesini listeden kaldırmak istiyor musunuz?",
-                "İndirmeyi Kaldır",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
+        var targets = GetTargetViewModels();
+        if (targets.Count == 0) return;
 
-            if (res == MessageBoxResult.Yes)
-            {
-                _queueManager.Remove(selected.Task, deleteFiles: false);
-            }
+        string prompt = targets.Count == 1
+            ? $"'{targets[0].FileName}' indirmesini listeden kaldırmak istiyor musunuz?"
+            : $"{targets.Count} indirmeyi listeden kaldırmak istiyor musunuz?";
+
+        var res = MessageBox.Show(prompt, "İndirmeyi Kaldır", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (res != MessageBoxResult.Yes) return;
+
+        foreach (var item in targets)
+        {
+            var torrent = Torrents.Jobs.FirstOrDefault(j => j.Summary == item.Task);
+            if (torrent != null) await torrent.RemoveAsync();
+            else _queueManager.Remove(item.Task, deleteFiles: false);
         }
     }
 
@@ -390,6 +853,18 @@ public partial class MainWindow : Window
 
     private void GridDownloads_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        // Ignore double-click on header or checkbox
+        if (e.OriginalSource is DependencyObject dep)
+        {
+            var cur = dep;
+            while (cur != null)
+            {
+                if (cur is System.Windows.Controls.Primitives.DataGridColumnHeader || cur is CheckBox || cur is Button) return;
+                cur = VisualTreeHelper.GetParent(cur);
+            }
+        }
+
+        if (SelectedTorrent() is { } job) { job.ShowDetails(); return; }
         var selected = GetSelectedViewModel();
         if (selected != null)
         {
@@ -408,6 +883,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void ContextSpeedLimit_Click(object sender, RoutedEventArgs e)
+    {
+        if (GetSelectedViewModel() is not { } row) return;
+        var torrent = SelectedTorrent();
+        if (SpeedLimitDialog.Prompt(this, row.Task.SpeedLimitBytesPerSecond) is not long limit) return;
+        if (torrent != null) await torrent.SetSpeedLimitAsync(limit);
+        else _queueManager.SetTaskSpeedLimit(row.Task, limit);
+    }
+
     private void ContextDetails_Click(object sender, RoutedEventArgs e)
     {
         OpenSelectedDetails();
@@ -415,6 +899,7 @@ public partial class MainWindow : Window
 
     private void OpenSelectedDetails()
     {
+        if (SelectedTorrent() is { } job) { job.ShowDetails(); return; }
         var selected = GetSelectedViewModel();
         if (selected != null)
         {
@@ -432,6 +917,7 @@ public partial class MainWindow : Window
 
     private void ContextOpen_Click(object sender, RoutedEventArgs e)
     {
+        if (SelectedTorrent() is { } job) { ShellHelper.OpenFolderAndSelect(null, job.Folder); return; }
         var selected = GetSelectedViewModel();
         if (selected != null)
         {
@@ -444,6 +930,7 @@ public partial class MainWindow : Window
 
     private void BtnOpenFolder_Click(object sender, RoutedEventArgs e)
     {
+        if (SelectedTorrent() is { } job) { ShellHelper.OpenFolderAndSelect(null, job.Folder); return; }
         var selected = GetSelectedViewModel();
         if (selected != null)
         {
@@ -460,18 +947,7 @@ public partial class MainWindow : Window
 
     private void ContextOpenFolder_Click(object sender, RoutedEventArgs e)
     {
-        var selected = GetSelectedViewModel();
-        if (selected != null)
-        {
-            string? fallbackDir = !string.IsNullOrWhiteSpace(selected.Task.SaveDirectory)
-                ? selected.Task.SaveDirectory
-                : _settingsManager.GetDirectoryForCategory(selected.Category);
-            ShellHelper.OpenFolderAndSelect(selected.FullPath, fallbackDir);
-        }
-        else
-        {
-            ShellHelper.OpenFolderAndSelect(null, _settingsManager.Current.DefaultDownloadDirectory);
-        }
+        BtnOpenFolder_Click(sender, e);
     }
 
     private async void ContextVerifyChecksum_Click(object sender, RoutedEventArgs e)
@@ -524,8 +1000,6 @@ public partial class MainWindow : Window
         dlg.ShowDialog();
     }
 
-    private void MenuAdd_Click(object sender, RoutedEventArgs e) => BtnAddUrl_Click(sender, e);
-    
     private void MenuExit_Click(object sender, RoutedEventArgs e)
     {
         _isExplicitExit = true;
@@ -541,7 +1015,7 @@ public partial class MainWindow : Window
     private void MenuAbout_Click(object sender, RoutedEventArgs e)
     {
         MessageBox.Show(
-            "IDMLite v1.0.2\n\nAçık Kaynak Kodlu Çok Kanallı İndirme Yöneticisi\n\n• Multi-Thread Eşzamanlı Parça İndirme (Range Request)\n• HLS (.m3u8) Video İndirme Motoru\n• Manifest V3 Tarayıcı Video Yakalama Paneli\n• Native Messaging Host & Yerel REST IPC",
+            "IDMLite v1.0.3\n\nAçık Kaynak Kodlu Çok Kanallı İndirme Yöneticisi\n\n• Multi-Thread Eşzamanlı Parça İndirme (Range Request)\n• HLS (.m3u8) Video İndirme Motoru\n• Manifest V3 Tarayıcı Video Yakalama Paneli\n• Native Messaging Host & Yerel REST IPC",
             "Hakkında - IDMLite",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
@@ -656,6 +1130,7 @@ public partial class MainWindow : Window
                 _notifyIcon.Dispose();
                 _notifyIcon = null;
             }
+            Torrents.Dispose();
             base.OnClosing(e);
         }
     }

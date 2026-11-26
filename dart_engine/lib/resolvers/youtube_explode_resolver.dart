@@ -155,8 +155,18 @@ class YouTubeExplodeResolver {
     required String url,
     required String destinationPath,
     String? ffmpegPath,
+    int speedLimit = 0,
     void Function(TurboDownloadProgress)? onProgress,
   }) async {
+    Future<void> pace(Stopwatch clock, int bytes) async {
+      if (speedLimit <= 0) return;
+      final remaining = (bytes * Duration.microsecondsPerSecond / speedLimit).ceil() -
+          clock.elapsedMicroseconds;
+      if (remaining > 0) {
+        await Future<void>.delayed(Duration(microseconds: remaining));
+      }
+    }
+
     final yt = YoutubeExplode();
     try {
       final video = await yt.videos.get(url).timeout(const Duration(seconds: 12));
@@ -187,6 +197,7 @@ class YouTubeExplodeResolver {
         await for (final chunk in yt.videos.streamsClient.get(bestAudio).timeout(const Duration(seconds: 25))) {
           sink.add(chunk);
           downloaded += chunk.length;
+          if (speedLimit > 0) await pace(sw, downloaded);
           final elapsed = sw.elapsedMilliseconds / 1000.0;
           final speed = elapsed > 0 ? downloaded / elapsed : 0.0;
           onProgress?.call(TurboDownloadProgress(
@@ -225,6 +236,7 @@ class YouTubeExplodeResolver {
         await for (final chunk in yt.videos.streamsClient.get(bestVideo).timeout(const Duration(seconds: 25))) {
           vSink.add(chunk);
           downloaded += chunk.length;
+          if (speedLimit > 0) await pace(sw, downloaded);
           final elapsed = sw.elapsedMilliseconds / 1000.0;
           final speed = elapsed > 0 ? downloaded / elapsed : 0.0;
           onProgress?.call(TurboDownloadProgress(
@@ -242,6 +254,7 @@ class YouTubeExplodeResolver {
         await for (final chunk in yt.videos.streamsClient.get(bestAudio).timeout(const Duration(seconds: 25))) {
           aSink.add(chunk);
           downloaded += chunk.length;
+          if (speedLimit > 0) await pace(sw, downloaded);
           final elapsed = sw.elapsedMilliseconds / 1000.0;
           final speed = elapsed > 0 ? downloaded / elapsed : 0.0;
           onProgress?.call(TurboDownloadProgress(
@@ -292,6 +305,7 @@ class YouTubeExplodeResolver {
         await for (final chunk in yt.videos.streamsClient.get(muxed).timeout(const Duration(seconds: 25))) {
           sink.add(chunk);
           downloaded += chunk.length;
+          if (speedLimit > 0) await pace(sw, downloaded);
           final elapsed = sw.elapsedMilliseconds / 1000.0;
           final speed = elapsed > 0 ? downloaded / elapsed : 0.0;
           onProgress?.call(TurboDownloadProgress(

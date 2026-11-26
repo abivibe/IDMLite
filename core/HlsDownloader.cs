@@ -68,7 +68,7 @@ public class HlsDownloader : IDisposable
             WindowStyle = ProcessWindowStyle.Hidden, RedirectStandardError = localInput == null, RedirectStandardOutput = localInput == null };
         start.ArgumentList.Add("-y");
         if (localInput == null)
-            foreach (string arg in new[] { "-protocol_whitelist", "http,https,tcp,tls,crypto", "-tls_verify", "1", "-headers", BuildFfmpegHeaderArg() }) start.ArgumentList.Add(arg);
+            foreach (string arg in new[] { "-rw_timeout", "25000000", "-protocol_whitelist", "http,https,tcp,tls,crypto", "-tls_verify", "1", "-headers", BuildFfmpegHeaderArg() }) start.ArgumentList.Add(arg);
         if (localInput == null && !string.IsNullOrWhiteSpace(Cookies))
         {
             var origin = new Uri(CookieSourceUrl ?? PlaylistUrl);
@@ -94,7 +94,7 @@ public class HlsDownloader : IDisposable
             StatusChanged?.Invoke(this, Status);
 
             string? ffmpegExe = YtDlpHelper.FindFfmpegPath();
-            if (!string.IsNullOrEmpty(ffmpegExe))
+            if (!string.IsNullOrEmpty(ffmpegExe) && SpeedLimiter.EffectiveLimit == 0)
             {
                 string targetMp4 = DestinationPath.EndsWith(".ts", StringComparison.OrdinalIgnoreCase)
                     ? Path.ChangeExtension(DestinationPath, ".mp4")
@@ -154,7 +154,7 @@ public class HlsDownloader : IDisposable
 
                         proc.Start();
                         proc.BeginErrorReadLine();
-                        await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+                        await WaitForFfmpegAsync(proc, ct).ConfigureAwait(false);
 
                         if (proc.ExitCode == 0 && File.Exists(targetMp4) && new FileInfo(targetMp4).Length > 1024)
                         {
@@ -169,7 +169,7 @@ public class HlsDownloader : IDisposable
 
                         using var procAac = new Process { StartInfo = psiAac, EnableRaisingEvents = true };
                         procAac.Start();
-                        await procAac.WaitForExitAsync(ct).ConfigureAwait(false);
+                        await WaitForFfmpegAsync(procAac, ct).ConfigureAwait(false);
 
                         if (procAac.ExitCode == 0 && File.Exists(targetMp4) && new FileInfo(targetMp4).Length > 1024)
                         {
@@ -230,7 +230,7 @@ public class HlsDownloader : IDisposable
             Status = DownloadStatus.Downloading;
             StatusChanged?.Invoke(this, Status);
 
-            string tempDir = Path.Combine(Path.GetTempPath(), "IDMLite_HLS_" + Guid.NewGuid().ToString("N"));
+            string tempDir = Path.Combine(Path.GetTempPath(), "IDMLDownload-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDir);
 
             long lastTicks = Stopwatch.GetTimestamp();
@@ -247,7 +247,7 @@ public class HlsDownloader : IDisposable
                 {
                     int index = i;
                     string segUrl = segmentUrls[i];
-                    string segFile = Path.Combine(tempDir, $"seg_{index:D6}.ts");
+                    string segFile = Path.Combine(tempDir, $"IDMLDownload-{index + 1:D6}.ts");
 
                     await semaphore.WaitAsync(ct).ConfigureAwait(false);
 
@@ -314,7 +314,7 @@ public class HlsDownloader : IDisposable
                 {
                     for (int i = 0; i < segmentUrls.Count; i++)
                     {
-                        string segFile = Path.Combine(tempDir, $"seg_{i:D6}.ts");
+                        string segFile = Path.Combine(tempDir, $"IDMLDownload-{i + 1:D6}.ts");
                         if (File.Exists(segFile))
                         {
                             using var segStream = File.OpenRead(segFile);
@@ -348,7 +348,7 @@ public class HlsDownloader : IDisposable
                         using (var proc = new Process { StartInfo = psi })
                         {
                             proc.Start();
-                            await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+                            await WaitForFfmpegAsync(proc, ct).ConfigureAwait(false);
                             if (proc.ExitCode == 0 && File.Exists(targetMp4Path) && new FileInfo(targetMp4Path).Length > 0)
                             {
                                 remuxed = true;
@@ -362,7 +362,7 @@ public class HlsDownloader : IDisposable
                             var psiAac = FfmpegStartInfo(ffmpeg, targetMp4Path, true, rawTsPath);
                             using var procAac = new Process { StartInfo = psiAac };
                             procAac.Start();
-                            await procAac.WaitForExitAsync(ct).ConfigureAwait(false);
+                            await WaitForFfmpegAsync(procAac, ct).ConfigureAwait(false);
                             if (procAac.ExitCode == 0 && File.Exists(targetMp4Path) && new FileInfo(targetMp4Path).Length > 0)
                             {
                                 remuxed = true;
@@ -441,6 +441,18 @@ public class HlsDownloader : IDisposable
         }
     }
 
+    private static async Task WaitForFfmpegAsync(Process process, CancellationToken token)
+    {
+        try { await process.WaitForExitAsync(token).ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private Task<HttpResponseMessage> SendHttpAsync(string url, CancellationToken ct)
     {
         // One scoped session for playlists, redirects, keys and segments.
@@ -459,9 +471,12 @@ public class HlsDownloader : IDisposable
         using var file = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, 32 * 1024);
 
         byte[] buffer = new byte[32 * 1024];
-        int read;
-        while ((read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false)) > 0)
+        while (true)
         {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(25));
+            int read = await stream.ReadAsync(buffer.AsMemory(), timeout.Token).ConfigureAwait(false);
+            if (read == 0) break;
             await SpeedLimiter.ThrottleAsync(read, ct).ConfigureAwait(false);
             await file.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
         }
@@ -471,7 +486,9 @@ public class HlsDownloader : IDisposable
     {
         using var res = await SendHttpAsync(url, ct).ConfigureAwait(false);
         res.EnsureSuccessStatusCode();
-        string content = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(25));
+        string content = await res.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
         if (!content.Contains("#EXT-X-STREAM-INF"))
         {
             return url; // It is already a media playlist
@@ -512,7 +529,9 @@ public class HlsDownloader : IDisposable
     {
         using var res = await SendHttpAsync(playlistUrl, ct).ConfigureAwait(false);
         res.EnsureSuccessStatusCode();
-        string content = await res.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(25));
+        string content = await res.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
         var list = new List<string>();
         var baseUri = new Uri(playlistUrl);
         string? initSegmentUrl = null;

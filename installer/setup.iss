@@ -3,7 +3,7 @@
 ; =====================================================================
 
 #define MyAppName "IDMLite"
-#define MyAppVersion "1.0.2"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "IDMLite Project"
 #define MyAppURL "https://github.com/idmlite/idmlite"
 #define MyAppExeName "IDMLite.exe"
@@ -21,7 +21,7 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=..\installer\output
-OutputBaseFilename=IDMLite_Setup_v{#MyAppVersion}_Security
+OutputBaseFilename=IDMLite_Setup_v{#MyAppVersion}
 SetupIconFile=app_icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -115,7 +115,7 @@ Name: "{sd}\Temp\IDMLite"; Flags: uninsneveruninstall
 Source: "dist_app\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Extension distribution packages (.crx and .zip)
-Source: "dist_extension\IDMLite_Extension_v1.0.2.zip"; DestDir: "{app}\extension_dist"; Flags: ignoreversion
+Source: "dist_extension\IDMLite_Extension_v1.0.3.zip"; DestDir: "{app}\extension_dist"; Flags: ignoreversion
 Source: "dist_extension\IDMLite.crx"; DestDir: "{app}\extension_dist"; Flags: ignoreversion
 
 [Icons]

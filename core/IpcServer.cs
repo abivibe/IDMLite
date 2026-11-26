@@ -81,7 +81,8 @@ public class IpcServer : IDisposable
             if (downloadReq.RequestId is { Length: > 0 } key &&
                 _queueManager.GetTasksSnapshot().FirstOrDefault(task => task.OriginRequestId == key) is { } previous)
                 return new(200, new { success = true, action = "task_queued", requestId = key, id = previous.Id, fileName = previous.FileName });
-            if (!downloadReq.AutoStart && _settingsManager.Current.ShowDownloadDialog)
+            if (TorrentSource.Matches(downloadReq.Url, downloadReq.FileName) ||
+                !downloadReq.AutoStart && _settingsManager.Current.ShowDownloadDialog)
             {
                 var openWindow = OpenDownloadWindowAsync;
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
@@ -97,7 +98,7 @@ public class IpcServer : IDisposable
                 ? SegmentedDownloader.ExtractFileNameFromUrl(downloadReq.Url)
                 : SegmentedDownloader.CleanFileName(downloadReq.FileName);
             var detected = CategoryDetector.FromExtension(Path.GetExtension(fileName));
-            var category = detected != DownloadCategory.Compressed &&
+            var category = detected is not (DownloadCategory.Compressed or DownloadCategory.Programs or DownloadCategory.Documents) &&
                 Enum.TryParse<DownloadCategory>(downloadReq.Category, true, out var cat) && cat is not (DownloadCategory.All or DownloadCategory.Other)
                 ? cat
                 : detected;
@@ -229,7 +230,7 @@ public class IpcServer : IDisposable
         var snapshot = _queueManager.GetTasksSnapshot();
         return new
         {
-            status = "ok", online = true, appName = "IDMLite", version = "1.0.2",
+            status = "ok", online = true, appName = "IDMLite", version = "1.0.3",
             activeCount = authorized ? snapshot.Count(t => t.Status == DownloadStatus.Downloading) : 0,
             queueCount = authorized ? snapshot.Count : 0
         };
@@ -263,7 +264,7 @@ public class IpcServer : IDisposable
     private Task<HandoffReply> DownloadAsync(DownloadRequest? request)
     {
         if (request == null || !Uri.TryCreate(request.Url, UriKind.Absolute, out var uri) ||
-            uri.Scheme is not ("http" or "https"))
+            uri.Scheme is not ("http" or "https") && !(uri.Scheme == "magnet" && TorrentSource.Matches(request.Url)))
             return Task.FromResult(new HandoffReply(400, new { success = false, error = "Invalid download URL" }));
 
         request.Url = SegmentedDownloader.NormalizeGitHubRawUrl(request.Url);

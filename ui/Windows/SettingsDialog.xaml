@@ -2,236 +2,434 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         FontSize="13" UseLayoutRounding="True"
-        Title="{DynamicResource Str_SettingsTitle}" 
-        Height="580" Width="720"
+        Title="{DynamicResource Str_SettingsTitle}"
+        Height="535" Width="740"
+        MinHeight="480" MinWidth="680"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize"
+        WindowStyle="None"
+        ResizeMode="CanResize"
         Background="{DynamicResource WindowBgBrush}">
 
-    <Grid Margin="16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="38"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="12"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
 
-        <TabControl Background="{DynamicResource PanelBgBrush}">
-            <!-- TAB 1: BAĞLANTI & HIZ -->
-            <TabItem Header="{DynamicResource Str_TabConnection}">
-                <StackPanel Margin="16">
-                    <GroupBox Header="Bağlantı &amp; Segmentasyon Ayarları" Margin="0,0,0,16" Padding="12">
-                        <StackPanel>
-                            <Grid Margin="0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="280"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="50"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="{DynamicResource Str_MaxThreads}" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
-                                <Slider x:Name="SldConnections" Grid.Column="1" Minimum="1" Maximum="32" Value="8" 
-                                        TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="10,0"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=SldConnections}" FontWeight="Bold" VerticalAlignment="Center" Foreground="{DynamicResource AccentBrush}"/>
-                            </Grid>
+    <Window.Resources>
+        <Style x:Key="SettingsNavButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Margin" Value="10,2,10,2"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="navBd" Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="navBd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-                            <Grid Margin="0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="280"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="50"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="{DynamicResource Str_MaxConcurrent}" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
-                                <Slider x:Name="SldConcurrent" Grid.Column="1" Minimum="1" Maximum="10" Value="3" 
-                                        TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center" Margin="10,0"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Value, ElementName=SldConcurrent}" FontWeight="Bold" VerticalAlignment="Center" Foreground="{DynamicResource AccentBrush}"/>
-                            </Grid>
-                        </StackPanel>
-                    </GroupBox>
+        <!-- Stepper - / + Mini Button -->
+        <Style x:Key="StepperBtnStyle" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SidebarSelectedBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
 
-                    <GroupBox Header="{DynamicResource Str_TabSpeed}" Margin="0,0,0,16" Padding="12">
-                        <StackPanel>
-                            <CheckBox x:Name="ChkSpeedLimit" Content="{DynamicResource Str_EnableSpeedLimit}" Margin="0,0,0,10" 
-                                      Checked="ChkSpeedLimit_Changed" Unchecked="ChkSpeedLimit_Changed" Foreground="{DynamicResource TextBrush}"/>
-                            <Grid Margin="0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="120"/>
-                                    <ColumnDefinition Width="90"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Maksimum Hız:" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
-                                <TextBox x:Name="TxtSpeedLimitValue" Grid.Column="1" Height="26" VerticalContentAlignment="Center" Margin="0,0,8,0"
-                                         Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                                <ComboBox x:Name="CmbSpeedUnit" Grid.Column="2" Height="26" SelectedIndex="1"
-                                          Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}">
-                                    <ComboBoxItem Content="KB/s"/>
-                                    <ComboBoxItem Content="MB/s"/>
-                                </ComboBox>
-                            </Grid>
-                        </StackPanel>
-                    </GroupBox>
+    <Border x:Name="RootBorder"
+            Background="{DynamicResource PanelBgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            SnapsToDevicePixels="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="42"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-                    <GroupBox Header="Uygulama Davranışı" Padding="12">
-                        <StackPanel>
-                            <CheckBox x:Name="ChkCloseToTray" Content="{DynamicResource Str_CloseToTray}" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                            <CheckBox x:Name="ChkNotification" Content="İndirme tamamlandığında Windows bildirimi göster" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                            <CheckBox x:Name="ChkSound" Content="İndirme tamamlandığında ses çal" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                        </StackPanel>
-                    </GroupBox>
-                </StackPanel>
-            </TabItem>
-
-            <!-- TAB 2: KAYIT KLASÖRLERİ -->
-            <TabItem Header="{DynamicResource Str_TabFolders}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16">
-                        <TextBlock Text="İndirme kurtarma kayıtları (.idmlitemeta)" FontWeight="SemiBold" Margin="0,0,0,6" Foreground="{DynamicResource TextBrush}"/>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="90"/></Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtMetadataDirectory" Height="32" Padding="8,0" VerticalContentAlignment="Center" Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="32" Click="BtnBrowseDir_Click" Tag="Recovery" Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                        </Grid>
-                        <CheckBox x:Name="ChkResumeInterrupted" Content="Yeniden açıldığında kesilen indirmelere devam et" Margin="0,0,0,16" Foreground="{DynamicResource TextBrush}"/>
-                        <TextBlock Text="Kategoriye Özel Varsayılan Kayıt Klasörleri" FontWeight="SemiBold" Margin="0,0,0,12" Foreground="{DynamicResource TextBrush}"/>
-
-                        <!-- General / Default -->
-                        <TextBlock Text="{DynamicResource Str_AllDownloads}" FontWeight="Medium" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="90"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtDirDefault" Height="32" Padding="8,0" VerticalContentAlignment="Center" Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="32" Padding="10,2" Click="BtnBrowseDir_Click" Tag="Default"
-                                    Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                        </Grid>
-
-                        <!-- Documents -->
-                        <TextBlock Text="{DynamicResource Str_Documents}" FontWeight="Medium" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="90"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtDirDocuments" Height="32" Padding="8,0" VerticalContentAlignment="Center" Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="32" Padding="10,2" Click="BtnBrowseDir_Click" Tag="Documents"
-                                    Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                        </Grid>
-
-                        <!-- Compressed -->
-                        <TextBlock Text="{DynamicResource Str_Compressed}" FontWeight="Medium" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="90"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtDirCompressed" Height="32" Padding="8,0" VerticalContentAlignment="Center" Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="32" Padding="10,2" Click="BtnBrowseDir_Click" Tag="Compressed"
-                                    Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                        </Grid>
-
-                        <!-- Music -->
-                        <TextBlock Text="{DynamicResource Str_Music}" FontWeight="Medium" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="90"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtDirMusic" Height="32" Padding="8,0" VerticalContentAlignment="Center" Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="32" Padding="10,2" Click="BtnBrowseDir_Click" Tag="Music"
-                                    Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                        </Grid>
-
-                        <!-- Video -->
-                        <TextBlock Text="{DynamicResource Str_Video}" FontWeight="Medium" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="90"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtDirVideo" Height="32" Padding="8,0" VerticalContentAlignment="Center" Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="32" Padding="10,2" Click="BtnBrowseDir_Click" Tag="Video"
-                                    Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                        </Grid>
-
-                        <!-- Programs -->
-                        <TextBlock Text="{DynamicResource Str_Programs}" FontWeight="Medium" Margin="0,4" Foreground="{DynamicResource TextBrush}"/>
-                        <Grid Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="90"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtDirPrograms" Height="32" Padding="8,0" VerticalContentAlignment="Center" Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                            <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="32" Padding="10,2" Click="BtnBrowseDir_Click" Tag="Programs"
-                                    Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                        </Grid>
+            <!-- 0. Custom Dark Title Bar -->
+            <Border Grid.Row="0" Background="{DynamicResource SidebarBgBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1" Padding="14,0,6,0">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path Width="15" Height="15" Stretch="Uniform" Margin="0,0,9,0" VerticalAlignment="Center"
+                              Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" StrokeLineJoin="Round"
+                              Data="M8,5.2 A2.8,2.8 0 1 0 8,10.8 A2.8,2.8 0 1 0 8,5.2 M8,1.5 V3.2 M8,12.8 V14.5 M1.5,8 H3.2 M12.8,8 H14.5 M3.4,3.4 L4.6,4.6 M11.4,11.4 L12.6,12.6 M12.6,3.4 L11.4,4.6 M4.6,11.4 L3.4,12.6"/>
+                        <TextBlock Text="{DynamicResource Str_SettingsShortTitle}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
-                </ScrollViewer>
-            </TabItem>
 
-            <!-- TAB 3: TARAYICI ENTEGRASYONU -->
-            <TabItem Header="{DynamicResource Str_Extension}">
-                <StackPanel Margin="16">
-                    <GroupBox Header="Yerel IPC Köprüsü (Desktop &lt;-&gt; Extension)" Margin="0,0,0,16" Padding="12">
-                        <StackPanel>
-                            <TextBlock Text="IDMLite arka planda yerel bir REST &amp; WebSocket sunucusu çalıştırır. Tarayıcı eklentisi bu port üzerinden indirmeleri aktarır." TextWrapping="Wrap" Margin="0,0,0,10" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                            <Grid Margin="0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="140"/>
-                                    <ColumnDefinition Width="100"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Dinleme Portu:" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}"/>
-                                <TextBox x:Name="TxtIpcPort" Grid.Column="1" Height="32" Padding="8,0" VerticalContentAlignment="Center" Text="41718"
-                                         Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-                                <TextBlock Grid.Column="2" Text="{DynamicResource Str_BrowserBridge}" VerticalAlignment="Center" Margin="12,0" FontWeight="SemiBold" Foreground="{DynamicResource SuccessBrush}"/>
-                            </Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Style="{DynamicResource WindowControlButtonStyle}" Click="BtnWinMinimize_Click" ToolTip="Küçült">
+                            <Path Data="M0,0 H10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2"/>
+                        </Button>
+                        <Button Style="{DynamicResource WindowControlButtonStyle}" Click="BtnWinMaximize_Click" ToolTip="Büyüt">
+                            <Path x:Name="IconWinMaximize" Data="M0.5,0.5 H9.5 V9.5 H0.5 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2"/>
+                        </Button>
+                        <Button Style="{DynamicResource WindowCloseButtonStyle}" Click="BtnWinClose_Click" ToolTip="{DynamicResource Str_Close}">
+                            <Path Data="M0.5,0.5 L9.5,9.5 M9.5,0.5 L0.5,9.5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 1. Two-Pane Body -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="212"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Settings Navigation -->
+                <Border Grid.Column="0" Background="{DynamicResource SidebarBgBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,1,0" Padding="0,12,0,12">
+                    <Grid x:Name="SettingsNavGrid">
+                        <!-- Animated Selection Pill -->
+                        <Border x:Name="SettingsNavIndicator"
+                                VerticalAlignment="Top"
+                                HorizontalAlignment="Stretch"
+                                Height="36"
+                                Margin="10,0,10,0"
+                                CornerRadius="8"
+                                Background="{DynamicResource SidebarSelectedBrush}"
+                                IsHitTestVisible="False"
+                                Panel.ZIndex="0"
+                                Opacity="0">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="SettingsNavTransform" Y="0"/>
+                            </Border.RenderTransform>
+                            <Border HorizontalAlignment="Left" VerticalAlignment="Center"
+                                    Width="3.5" Height="18" CornerRadius="2"
+                                    Background="{DynamicResource AccentBrush}">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#2CE66B" BlurRadius="8" ShadowDepth="0" Opacity="0.6"/>
+                                </Border.Effect>
+                            </Border>
+                        </Border>
+
+                        <StackPanel Panel.ZIndex="1">
+                            <Button x:Name="TabNavConnection" Tag="0" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Path x:Name="IconTabConn" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M8,1 A7,7 0 1 0 8,15 A7,7 0 1 0 8,1 M8,4.5 V11 M5.5,8.5 L8,11 L10.5,8.5"/>
+                                    <TextBlock Grid.Column="1" Text="{DynamicResource Str_TabConnection}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="TabNavFolders" Tag="1" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Path x:Name="IconTabFolders" Width="15" Height="14" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                          Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V12.5 H1.5 Z"/>
+                                    <TextBlock Grid.Column="1" Text="{DynamicResource Str_NavFolders}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="TabNavBrowser" Tag="2" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Path x:Name="IconTabBrowser" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeLineJoin="Round"
+                                          Data="M8,1 A7,7 0 1 0 8,15 A7,7 0 1 0 8,1 M1.5,8 H14.5 M8,1 C10.5,4 10.5,12 8,15 M8,1 C5.5,4 5.5,12 8,15"/>
+                                    <TextBlock Grid.Column="1" Text="{DynamicResource Str_NavBrowser}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="TabNavAppearance" Tag="3" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Path x:Name="IconTabAppearance" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeLineJoin="Round"
+                                          Data="M2,2.5 H14 V13.5 H2 Z M5,6 H11 M5,9.5 H9"/>
+                                    <TextBlock Grid.Column="1" Text="{DynamicResource Str_NavLangAppearance}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
+
+                            <Button x:Name="TabNavGeneral" Tag="4" Style="{StaticResource SettingsNavButtonStyle}" Click="SettingsNav_Click">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Path x:Name="IconTabGeneral" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                          Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                          Data="M8,5.2 A2.8,2.8 0 1 0 8,10.8 A2.8,2.8 0 1 0 8,5.2 M8,1.5 V3.2 M8,12.8 V14.5 M1.5,8 H3.2 M12.8,8 H14.5 M3.4,3.4 L4.6,4.6 M11.4,11.4 L12.6,12.6 M12.6,3.4 L11.4,4.6 M4.6,11.4 L3.4,12.6"/>
+                                    <TextBlock Grid.Column="1" Text="{DynamicResource Str_TabGeneral}" VerticalAlignment="Center"/>
+                                </Grid>
+                            </Button>
                         </StackPanel>
-                    </GroupBox>
+                    </Grid>
+                </Border>
 
-                    <GroupBox Header="Native Messaging Host (Chrome / Edge / Firefox)" Padding="12">
-                        <StackPanel>
-                            <TextBlock Text="Tarayıcıların eklentiyi yerel uygulama olarak doğrudan tanıması için Windows Kayıt Defteri (Registry) anahtarları yapılandırılır." TextWrapping="Wrap" Margin="0,0,0,12" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                            <StackPanel Orientation="Horizontal" Margin="0,4">
-                                <Button Content="{DynamicResource Str_Extension}" Height="32" Padding="12,0" Click="BtnQuickExtension_Click"
-                                        Background="{DynamicResource PrimaryActionBrush}" Foreground="{DynamicResource PrimaryActionTextBrush}" Margin="0,0,10,0"/>
-                                <Button Content="Native Host'u Kaydet" Height="32" Padding="12,0" Click="BtnRegisterNativeHost_Click"
-                                        Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}" Margin="0,0,10,0"/>
-                                <Button Content="Eklenti Klasörünü Aç" Height="32" Padding="12,0" Click="BtnOpenExtensionFolder_Click"
-                                        Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
+                <!-- Right Content + Footer -->
+                <Grid Grid.Column="1" Background="{DynamicResource PanelBgBrush}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Animated Content Host -->
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="28,22,28,12">
+                        <Grid x:Name="SettingsPagesHost">
+                            <Grid.RenderTransform>
+                                <TranslateTransform x:Name="SettingsPageSlide" Y="0"/>
+                            </Grid.RenderTransform>
+
+                            <!-- PAGE 0: Bağlantı & Motor -->
+                            <StackPanel x:Name="PageConnection" Visibility="Visible">
+                                <TextBlock Text="{DynamicResource Str_ConnSegHeader}" FontSize="15.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,16"/>
+
+                                <!-- Max Threads Stepper -->
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{DynamicResource Str_MaxThreadsShort}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                    <Border Grid.Column="1" Background="{DynamicResource InputBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="7">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="−" Style="{StaticResource StepperBtnStyle}" Click="BtnConnDec_Click"/>
+                                            <TextBlock x:Name="TxtConnectionsVal" Text="8" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextBrush}"/>
+                                            <Button Content="+" Style="{StaticResource StepperBtnStyle}" Click="BtnConnInc_Click"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <!-- Max Concurrent Downloads Stepper -->
+                                <Grid Margin="0,0,0,24">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{DynamicResource Str_MaxConcurrentShort}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                    <Border Grid.Column="1" Background="{DynamicResource InputBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="7">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="−" Style="{StaticResource StepperBtnStyle}" Click="BtnConcDec_Click"/>
+                                            <TextBlock x:Name="TxtConcurrentVal" Text="3" Width="44" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="13" Foreground="{DynamicResource TextBrush}"/>
+                                            <Button Content="+" Style="{StaticResource StepperBtnStyle}" Click="BtnConcInc_Click"/>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <!-- Hız Limiti -->
+                                <TextBlock Text="{DynamicResource Str_TabSpeed}" FontSize="14.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,12"/>
+
+                                <CheckBox x:Name="ChkSpeedLimit" Style="{DynamicResource ModernToggleSwitchStyle}"
+                                          Content="{DynamicResource Str_EnableSpeedLimitClean}" Margin="0,0,0,14"
+                                          Checked="ChkSpeedLimit_Changed" Unchecked="ChkSpeedLimit_Changed"/>
+
+                                <Grid Margin="0,0,0,26">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="136"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="106"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{DynamicResource Str_MaxSpeedLabel}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="TxtSpeedLimitValue" Grid.Column="1" Height="34" Margin="0,0,10,0"/>
+                                    <ComboBox x:Name="CmbSpeedUnit" Grid.Column="2" Height="34" SelectedIndex="0">
+                                        <ComboBoxItem Content="KB/s"/>
+                                        <ComboBoxItem Content="MB/s"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- Uygulama Davranışı -->
+                                <TextBlock Text="{DynamicResource Str_AppBehaviorHeader}" FontSize="14.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,12"/>
+
+                                <CheckBox x:Name="ChkCloseToTray" Content="{DynamicResource Str_CloseToTrayClean}" Margin="0,5"/>
+                                <CheckBox x:Name="ChkNotification" Content="{DynamicResource Str_NotifyOnComplete}" Margin="0,5"/>
+                                <CheckBox x:Name="ChkSound" Content="{DynamicResource Str_SoundOnComplete}" Margin="0,5"/>
                             </StackPanel>
-                        </StackPanel>
-                    </GroupBox>
-                </StackPanel>
-            </TabItem>
 
-            <!-- TAB 4: DİL & GÖRÜNÜM -->
-            <TabItem Header="🌐 Dil &amp; Görünüm">
-                <StackPanel Margin="16">
-                    <!-- Language Selection -->
-                    <GroupBox Header="{DynamicResource Str_Language}" Margin="0,0,0,16" Padding="12">
-                        <StackPanel>
-                            <TextBlock Text="Uygulama arayüz dilini anında değiştirebilirsiniz (Yeniden başlatma gerekmez):" Margin="0,0,0,8" Foreground="{DynamicResource TextSecondaryBrush}"/>
-                            <ComboBox x:Name="CmbLanguage" Height="30" SelectionChanged="CmbLanguage_SelectionChanged"
-                                      Background="{DynamicResource PanelBgBrush}" Foreground="{DynamicResource TextBrush}" DisplayMemberPath="NativeName"/>
-                        </StackPanel>
-                    </GroupBox>
+                            <!-- PAGE 1: İndirme Klasörleri -->
+                            <StackPanel x:Name="PageFolders" Visibility="Collapsed">
+                                <TextBlock Text="{DynamicResource Str_NavFolders}" FontSize="15.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,14"/>
 
-                    <!-- Theme Selection -->
-                    <GroupBox Header="{DynamicResource Str_Theme}" Padding="12">
-                        <StackPanel>
-                            <RadioButton x:Name="RbThemeDark" Content="{DynamicResource Str_DarkAmoled}" GroupName="ThemeGroup" Margin="0,6" Checked="RbTheme_Checked" Foreground="{DynamicResource TextBrush}"/>
-                            <RadioButton x:Name="RbThemeLight" Content="{DynamicResource Str_Light}" GroupName="ThemeGroup" Margin="0,6" Checked="RbTheme_Checked" Foreground="{DynamicResource TextBrush}"/>
-                            <RadioButton x:Name="RbThemeSystem" Content="Windows Sistem Teması" GroupName="ThemeGroup" Margin="0,6" Checked="RbTheme_Checked" Foreground="{DynamicResource TextBrush}"/>
-                        </StackPanel>
-                    </GroupBox>
-                </StackPanel>
-            </TabItem>
-        </TabControl>
+                                <TextBlock Text="İndirme kurtarma kayıtları (.idmlitemeta)" FontSize="12" FontWeight="Medium" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtMetadataDirectory" Height="34"/>
+                                    <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="34" Click="BtnBrowseDir_Click" Tag="Recovery"/>
+                                </Grid>
+                                <CheckBox x:Name="ChkResumeInterrupted" Content="Yeniden açıldığında kesilen indirmelere devam et" Margin="0,2,0,18"/>
 
-        <!-- Bottom OK / Cancel -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button MinWidth="130" Height="32" Padding="14,4" Margin="0,0,10,0" FontWeight="SemiBold"
-                    Click="BtnSave_Click" IsDefault="True" Background="{DynamicResource PrimaryActionBrush}" Foreground="{DynamicResource PrimaryActionTextBrush}"><TextBlock Text="{DynamicResource Str_Save}" Foreground="{DynamicResource PrimaryActionTextBrush}"/></Button>
-            <Button Content="{DynamicResource Str_Cancel}" MinWidth="85" Height="32" Padding="14,4" IsCancel="True"
-                    Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}"/>
-        </StackPanel>
-    </Grid>
+                                <TextBlock Text="Kategoriye Özel Varsayılan Kayıt Klasörleri" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,10"/>
+
+                                <TextBlock Text="{DynamicResource Str_AllDownloadsNav}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtDirDefault" Height="34"/>
+                                    <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="34" Click="BtnBrowseDir_Click" Tag="Default"/>
+                                </Grid>
+
+                                <TextBlock Text="{DynamicResource Str_Documents}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtDirDocuments" Height="34"/>
+                                    <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="34" Click="BtnBrowseDir_Click" Tag="Documents"/>
+                                </Grid>
+
+                                <TextBlock Text="{DynamicResource Str_Compressed}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtDirCompressed" Height="34"/>
+                                    <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="34" Click="BtnBrowseDir_Click" Tag="Compressed"/>
+                                </Grid>
+
+                                <TextBlock Text="{DynamicResource Str_Music}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtDirMusic" Height="34"/>
+                                    <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="34" Click="BtnBrowseDir_Click" Tag="Music"/>
+                                </Grid>
+
+                                <TextBlock Text="{DynamicResource Str_Video}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtDirVideo" Height="34"/>
+                                    <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="34" Click="BtnBrowseDir_Click" Tag="Video"/>
+                                </Grid>
+
+                                <TextBlock Text="{DynamicResource Str_Programs}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,4"/>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="88"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtDirPrograms" Height="34"/>
+                                    <Button Grid.Column="1" Content="{DynamicResource Str_Browse}" Margin="8,0,0,0" Height="34" Click="BtnBrowseDir_Click" Tag="Programs"/>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- PAGE 2: Tarayıcı Entegrasyonu -->
+                            <StackPanel x:Name="PageBrowser" Visibility="Collapsed">
+                                <TextBlock Text="{DynamicResource Str_NavBrowser}" FontSize="15.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,16"/>
+
+                                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Text="Yerel IPC Köprüsü (Desktop ↔ Extension)" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="IDMLite arka planda yerel bir REST &amp; WebSocket sunucusu çalıştırır. Tarayıcı eklentisi bu port üzerinden indirmeleri aktarır." TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,14"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="120"/>
+                                                <ColumnDefinition Width="100"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Dinleme Portu:" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                            <TextBox x:Name="TxtIpcPort" Grid.Column="1" Height="34" Text="41718"/>
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                                                <Ellipse Width="8" Height="8" Fill="{DynamicResource AccentBrush}" Margin="0,0,7,0"/>
+                                                <TextBlock Text="{DynamicResource Str_BrowserBridge}" FontSize="12" FontWeight="Medium" Foreground="{DynamicResource AccentBrush}" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="Native Messaging Host (Chrome / Edge / Firefox)" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="Tarayıcıların eklentiyi yerel uygulama olarak doğrudan tanıması için Windows Kayıt Defteri anahtarları yapılandırılır." TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,14"/>
+                                        <WrapPanel Orientation="Horizontal">
+                                            <Button Style="{DynamicResource PrimaryAccentButtonStyle}" Content="{DynamicResource Str_Extension}" Height="34" Padding="14,0" Margin="0,0,8,8" Click="BtnQuickExtension_Click"/>
+                                            <Button Content="Native Host'u Kaydet" Height="34" Padding="14,0" Margin="0,0,8,8" Click="BtnRegisterNativeHost_Click"/>
+                                            <Button Content="Eklenti Klasörünü Aç" Height="34" Padding="14,0" Margin="0,0,0,8" Click="BtnOpenExtensionFolder_Click"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- PAGE 3: Dil & Görünüm -->
+                            <StackPanel x:Name="PageAppearance" Visibility="Collapsed">
+                                <TextBlock Text="{DynamicResource Str_NavLangAppearance}" FontSize="15.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,16"/>
+
+                                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Text="{DynamicResource Str_Language}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="Uygulama arayüz dilini anında değiştirebilirsiniz (Yeniden başlatma gerekmez):" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,10"/>
+                                        <ComboBox x:Name="CmbLanguage" Height="36" SelectionChanged="CmbLanguage_SelectionChanged" DisplayMemberPath="NativeName"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="{DynamicResource Str_Theme}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,10"/>
+                                        <RadioButton x:Name="RbThemeDark" Content="{DynamicResource Str_DarkAmoled}" GroupName="ThemeGroup" Margin="0,6" Checked="RbTheme_Checked"/>
+                                        <RadioButton x:Name="RbThemeLight" Content="{DynamicResource Str_Light}" GroupName="ThemeGroup" Margin="0,6" Checked="RbTheme_Checked"/>
+                                        <RadioButton x:Name="RbThemeSystem" Content="Windows Sistem Teması" GroupName="ThemeGroup" Margin="0,6" Checked="RbTheme_Checked"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- PAGE 4: Genel -->
+                            <StackPanel x:Name="PageGeneral" Visibility="Collapsed">
+                                <TextBlock Text="{DynamicResource Str_TabGeneral}" FontSize="15.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,16"/>
+
+                                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16" Margin="0,0,0,16">
+                                    <StackPanel>
+                                        <TextBlock Text="İndirme Yakalama ve Başlatma" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextBrush}" Margin="0,0,0,10"/>
+                                        <CheckBox x:Name="ChkShowDownloadDialog" Content="{DynamicResource Str_ShowDownloadDialog}" Margin="0,5"/>
+                                        <CheckBox x:Name="ChkAutoStartDownloads" Content="Yakalanan indirmeleri otomatik başlat" Margin="0,5"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="16">
+                                    <StackPanel>
+                                        <TextBlock Text="IDMLite Download Manager" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+                                        <TextBlock Text="Sürüm 1.0.3 • Çok Kanallı İndirme &amp; BitTorrent Motoru" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <!-- Bottom Footer Buttons -->
+                    <Border Grid.Row="1" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,1,0,0" Padding="24,14">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{DynamicResource PrimaryAccentButtonStyle}" MinWidth="104" Height="36" Margin="0,0,10,0"
+                                    Click="BtnSave_Click" IsDefault="True">
+                                <TextBlock Text="{DynamicResource Str_Save}" Foreground="{DynamicResource PrimaryActionTextBrush}" FontWeight="Bold" FontSize="13"/>
+                            </Button>
+                            <Button Content="{DynamicResource Str_Cancel}" MinWidth="82" Height="36" IsCancel="True"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
 </Window>

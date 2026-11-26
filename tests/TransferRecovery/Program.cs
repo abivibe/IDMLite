@@ -55,6 +55,22 @@ try {
         }
         Check(File.ReadAllText(existing) == "existing" && queue.GetTasksSnapshot().Select(task => task.FullPath).Distinct().Count() == 2,
             "Late archive names do not overwrite existing files or other queued downloads");
+        foreach (var (path, category, extension) in new[]
+        {
+            ("document", DownloadCategory.Documents, ".pdf"),
+            ("program", DownloadCategory.Programs, ".msix")
+        })
+        {
+            string folder = Path.Combine(root, category.ToString());
+            archiveSettings.Current.CategoryDirectories[category] = folder;
+            using var reply = await client.PostAsJsonAsync($"http://127.0.0.1:{ipc.Port}/api/download",
+                new DownloadRequest { Url = server.Url + path, FileName = "download.bin", AutoStart = true, Direct = true });
+            reply.EnsureSuccessStatusCode();
+            var task = queue.GetTasksSnapshot().Single(t => t.Url == server.Url + path);
+            await Until(() => task.Status is DownloadStatus.Completed or DownloadStatus.Error);
+            Check(task.Status == DownloadStatus.Completed && task.SaveDirectory == folder && Path.GetExtension(task.FileName) == extension,
+                $"Late {extension} content disposition uses the {category} folder");
+        }
     }
 
     async Task<double> Benchmark(int connections) {
@@ -133,6 +149,11 @@ try {
         var item = new DownloadTask { Url = server.Url + "slow", SaveDirectory = root, FileName = "move.bin", IsDirect = true, ConnectionCount = 4, Cookies = "test-secret=do-not-store-as-plain-text" };
         queue.Add(item, true);
         await Until(() => item.RecoveryFilePath != null && RecoveryStore.Load(item.RecoveryFilePath)?.Http?.Segments.Sum(s => s.DownloadedBytes) > 0);
+        Check(File.Exists(item.WorkingPath) && item.DisplayName.StartsWith("IDMLDownload-") && !File.Exists(item.FullPath),
+            "an unfinished HTTP download uses an isolated numbered file");
+        queue.SetTaskSpeedLimit(item, 3 * 1024 * 1024);
+        Check(item.TransferLimiter?.MaxBytesPerSecond == 3 * 1024 * 1024, "per-task HTTP cap updates a live limiter");
+        queue.SetTaskSpeedLimit(item, 0);
         string oldPath = item.RecoveryFilePath!;
         string movedDirectory = Path.Combine(root, "moved");
         queue.ChangeMetadataDirectory(movedDirectory);
@@ -156,6 +177,7 @@ try {
         queue.Start(item);
         await Until(() => item.Status is DownloadStatus.Completed or DownloadStatus.Error);
         Check(item.Status == DownloadStatus.Completed && File.ReadAllBytes(item.FullPath).SequenceEqual(server.CurrentData), "Changed ETag restarts safely without mixing file versions");
+        Check(!File.Exists(item.WorkingPath) && item.DisplayName == "move.bin", "finished file replaces its staging name");
         queue.Remove(item);
         Check(!File.Exists(item.RecoveryFilePath!), "Removing a download removes its recovery record");
         server.Version = 1; server.FailuresRemaining = 4;
@@ -230,11 +252,17 @@ sealed class RangeFixture : IDisposable
         bool counted = false;
         try {
             var request = context.Request; var response = context.Response;
-            if (request.Url!.AbsolutePath == "/archive")
+            if (request.Url!.AbsolutePath is "/archive" or "/document" or "/program")
             {
                 if (request.HttpMethod == "HEAD") { response.StatusCode = 405; response.Close(); return; }
                 response.ContentType = "application/gzip";
-                response.AddHeader("Content-Disposition", "attachment; filename*=UTF-8''server.tar.gz");
+                string name = request.Url.AbsolutePath switch
+                {
+                    "/document" => "server.pdf",
+                    "/program" => "server.msix",
+                    _ => "server.tar.gz"
+                };
+                response.AddHeader("Content-Disposition", $"attachment; filename*=UTF-8''{name}");
                 response.ContentLength64 = Data.Length;
                 await response.OutputStream.WriteAsync(Data);
                 response.Close(); return;

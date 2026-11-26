@@ -1,0 +1,14 @@
+<UserControl x:Class="IDMLite.Windows.TorrentWorkspace"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+ <Border Background="{DynamicResource CardBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14,12">
+  <DockPanel>
+   <TextBlock DockPanel.Dock="Top" Text="{DynamicResource Torrent_Source}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+   <DockPanel DockPanel.Dock="Top">
+    <Button DockPanel.Dock="Right" Content="{DynamicResource Torrent_Open}" Height="34" Margin="8,0,0,0" Click="Browse_Click"/>
+    <Button DockPanel.Dock="Right" Style="{DynamicResource PrimaryAccentButtonStyle}" Content="{DynamicResource Torrent_Resolve}" Height="34" Margin="8,0,0,0" Click="Resolve_Click"/>
+    <TextBox x:Name="SourceBox" KeyDown="Source_KeyDown" MinWidth="64" Height="34"/>
+   </DockPanel>
+  </DockPanel>
+ </Border>
+</UserControl>

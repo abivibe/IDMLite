@@ -5,10 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>IDMLite.Core</RootNamespace>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MonoTorrent" Version="3.0.2" GeneratePathProperty="true" />
+    <None Include="$(PkgMonoTorrent)/LICENSE" Link="MONOTORRENT-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.22" />
   </ItemGroup>
 

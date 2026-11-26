@@ -28,6 +28,7 @@ public class AppSettings
 public class SettingsManager
 {
     public string StorageDirectory { get; }
+    private readonly bool _usesDefaultStorage;
     private string AppDataFolder => StorageDirectory;
     private string SettingsFile => Path.Combine(StorageDirectory, "settings.json");
 
@@ -35,7 +36,9 @@ public class SettingsManager
 
     public SettingsManager(string? storageDirectory = null)
     {
-        StorageDirectory = storageDirectory ?? Environment.GetEnvironmentVariable("IDMLITE_DATA_DIR") ??
+        string? overrideDirectory = Environment.GetEnvironmentVariable("IDMLITE_DATA_DIR");
+        _usesDefaultStorage = storageDirectory == null && overrideDirectory == null;
+        StorageDirectory = storageDirectory ?? overrideDirectory ??
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "IDMLite");
         PrivateStorage.EnsureDirectory(StorageDirectory);
         Current = Load();
@@ -82,7 +85,7 @@ public class SettingsManager
         if (string.IsNullOrWhiteSpace(settings.IpcToken) || settings.IpcToken.Length < 32)
             settings.IpcToken = Guid.NewGuid().ToString("N");
         if (string.IsNullOrWhiteSpace(settings.MetadataDirectory))
-            settings.MetadataDirectory = Environment.GetEnvironmentVariable("IDMLITE_DATA_DIR") != null
+            settings.MetadataDirectory = !_usesDefaultStorage
                 ? Path.Combine(StorageDirectory, "Recovery")
                 : Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\", "Temp", "IDMLite", PrivateStorage.UserId);
         string legacyMetadata = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory) ?? @"C:\", "Temp", "IDMLite");

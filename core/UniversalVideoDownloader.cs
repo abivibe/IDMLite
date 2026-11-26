@@ -27,6 +27,10 @@ public class UniversalVideoDownloader : IDisposable
     public long TotalBytes { get; set; }
     public int ConnectionCount { get; set; } = 8;
     public string? RecoveryFilePath { get; set; }
+    public bool UseStaging { get; init; }
+    public string? DestinationNameHint { get; init; }
+    public string? SuggestedTitle { get; private set; }
+    public bool UsesExternalDownloader => _activeYtDlp != null || _activeHls != null;
     public DownloadStatus Status { get; private set; } = DownloadStatus.Queued;
 
     public string? ComputedSha256 { get; private set; }
@@ -285,6 +289,7 @@ public class UniversalVideoDownloader : IDisposable
                     var ytDlp = new YtDlpDownloader(candidateUrl, DestinationPath)
                     {
                         FragmentConcurrency = ConnectionCount,
+                        SpeedLimitBytesPerSecond = SpeedLimiter.EffectiveLimit,
                         Cookies = Uri.TryCreate(CookieSourceUrl ?? Url, UriKind.Absolute, out var cookieOrigin) &&
                             new Uri(candidateUrl).Host.Equals(cookieOrigin.Host, StringComparison.OrdinalIgnoreCase) ? Cookies : null,
                         Referer = Referer,
@@ -384,7 +389,7 @@ public class UniversalVideoDownloader : IDisposable
     {
         try
         {
-            string currentFileName = Path.GetFileNameWithoutExtension(DestinationPath);
+            string currentFileName = Path.GetFileNameWithoutExtension(DestinationNameHint ?? DestinationPath);
             bool isGeneric = CustomPlayerResolver.IsGenericPlaylistFileName(currentFileName) ||
                              currentFileName.StartsWith("HLS_Video_", StringComparison.OrdinalIgnoreCase) ||
                              currentFileName.StartsWith("Web_Media_", StringComparison.OrdinalIgnoreCase) ||
@@ -415,6 +420,11 @@ public class UniversalVideoDownloader : IDisposable
         if (string.IsNullOrWhiteSpace(clean) || clean.Equals("Video", StringComparison.OrdinalIgnoreCase))
             return;
 
+        if (UseStaging)
+        {
+            SuggestedTitle = clean;
+            return;
+        }
         string? dir = Path.GetDirectoryName(DestinationPath);
         string newFileName = $"{clean}.mp4";
         DestinationPath = string.IsNullOrEmpty(dir) ? newFileName : Path.Combine(dir, newFileName);

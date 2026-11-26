@@ -26,6 +26,7 @@ public partial class AddDownloadDialog : Window
     private readonly Func<string, CancellationToken, Task<ResolvedLinkResult>> _mediaPreviewResolver;
 
     public DownloadTask? CreatedTask { get; private set; }
+    public string? TorrentUrl { get; private set; }
     public bool AutoStart { get; private set; }
 
     public AddDownloadDialog(SettingsManager settingsManager, DownloadRequest? initialRequest = null,
@@ -38,7 +39,7 @@ public partial class AddDownloadDialog : Window
         _mediaPreviewResolver = mediaPreviewResolver ?? ((url, ct) => Task.Run(() =>
             LinkResolverManager.Instance.ResolveMediaPreviewAsync(url, ct, url == _initialRequest?.Url ? _initialRequest.Cookies : null), ct));
 
-        TxtFileName.TextChanged += (_, _) => SelectArchiveCategory(TxtFileName.Text);
+        TxtFileName.TextChanged += (_, _) => SelectDetectedCategory(TxtFileName.Text);
         TxtDirectory.TextChanged += (_, _) => _directoryWasEdited = true;
         CmbCategory.SelectedIndex = 0;
 
@@ -74,7 +75,7 @@ public partial class AddDownloadDialog : Window
                 if (Clipboard.ContainsText())
                 {
                     string clip = Clipboard.GetText().Trim();
-                    if (Uri.TryCreate(clip, UriKind.Absolute, out var uri) && (uri.Scheme == "http" || uri.Scheme == "https"))
+                    if (Uri.TryCreate(clip, UriKind.Absolute, out var uri) && (uri.Scheme == "http" || uri.Scheme == "https" || TorrentSource.Matches(clip)))
                     {
                         TxtUrl.Text = clip;
                     }
@@ -117,10 +118,11 @@ public partial class AddDownloadDialog : Window
 
     private bool UsesAutomaticDirectory() => !_directoryWasEdited || string.IsNullOrWhiteSpace(TxtDirectory.Text);
 
-    private void SelectArchiveCategory(string fileName)
+    private void SelectDetectedCategory(string fileName)
     {
-        if (CategoryDetector.FromExtension(Path.GetExtension(fileName.Trim())) == DownloadCategory.Compressed)
-            SelectCategory(DownloadCategory.Compressed);
+        var category = CategoryDetector.FromExtension(Path.GetExtension(fileName.Trim()));
+        if (category is DownloadCategory.Compressed or DownloadCategory.Programs or DownloadCategory.Documents)
+            SelectCategory(category);
     }
 
     private void CmbCategory_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -147,6 +149,7 @@ public partial class AddDownloadDialog : Window
         PnlStreamSelection.Visibility = Visibility.Collapsed;
         LblFileSize.ToolTip = null;
         string url = TxtUrl.Text.Trim();
+        if (TorrentSource.Matches(url)) { LblFileSize.Text = "BitTorrent"; return; }
         if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
         {
             LblFileSize.Text = "-";
@@ -623,9 +626,10 @@ public partial class AddDownloadDialog : Window
                                              TxtFileName.Text.EndsWith(".bin", StringComparison.OrdinalIgnoreCase) ||
                                              string.IsNullOrEmpty(Path.GetExtension(TxtFileName.Text));
 
-                        bool isServerArchive = TxtFileName.Text == initialProbeFileName &&
-                            CategoryDetector.FromExtension(Path.GetExtension(downloader.SuggestedFileName)) == DownloadCategory.Compressed;
-                        if (isGenericName || isAuthoritativeInstagramTitle || isServerArchive)
+                        bool isServerDocumentOrProgramOrArchive = TxtFileName.Text == initialProbeFileName &&
+                            CategoryDetector.FromExtension(Path.GetExtension(downloader.SuggestedFileName)) is
+                                DownloadCategory.Compressed or DownloadCategory.Programs or DownloadCategory.Documents;
+                        if (isGenericName || isAuthoritativeInstagramTitle || isServerDocumentOrProgramOrArchive)
                         {
                             string safeName = downloader.SuggestedFileName;
                             if (safeName.EndsWith(".ts", StringComparison.OrdinalIgnoreCase))
@@ -793,6 +797,11 @@ public partial class AddDownloadDialog : Window
     private bool ValidateAndCreateTask()
     {
         string url = TxtUrl.Text.Trim();
+        if (TorrentSource.Matches(url, TxtFileName.Text))
+        {
+            TorrentUrl = url;
+            return true;
+        }
         if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
             uri.Scheme is not ("http" or "https"))
         {
@@ -816,7 +825,7 @@ public partial class AddDownloadDialog : Window
             fileName = Path.ChangeExtension(fileName, ".mp4");
         }
 
-        SelectArchiveCategory(fileName);
+        SelectDetectedCategory(fileName);
         string dir = TxtDirectory.Text.Trim();
         if (string.IsNullOrWhiteSpace(dir))
         {
@@ -902,4 +911,6 @@ public partial class AddDownloadDialog : Window
 
         return true;
     }
+
+    private void BtnWinMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 }

@@ -51,6 +51,19 @@ public class DownloadQueueManager : IDisposable
         _sharedSpeedLimiter.MaxBytesPerSecond = enabled ? maxBytesPerSec : 0;
     }
 
+    public void SetTaskSpeedLimit(DownloadTask task, long bytesPerSecond)
+    {
+        task.SpeedLimitBytesPerSecond = Math.Max(0, bytesPerSecond);
+        if (task.TransferLimiter != null) task.TransferLimiter.MaxBytesPerSecond = task.SpeedLimitBytesPerSecond;
+        if ((task.YtDlpEngine != null || task.HlsEngine != null || task.UniversalVideoEngine?.UsesExternalDownloader == true) &&
+            task.Status is DownloadStatus.Downloading or DownloadStatus.Connecting)
+        {
+            Pause(task);
+            Start(task);
+        }
+        SaveQueue();
+    }
+
     public void Add(DownloadTask task, bool autoStart = false)
     {
         lock (_lock)
@@ -65,6 +78,7 @@ public class DownloadQueueManager : IDisposable
                 task.ConnectionCount = _settingsManager.Current.MaxConnectionsPerDownload;
             }
 
+            task.UseStaging = true;
             task.Status = autoStart ? DownloadStatus.Queued : DownloadStatus.Paused;
             task.ResumeOnRestart = autoStart;
             task.RecoveryFilePath = RecoveryStore.PathFor(_settingsManager.Current.MetadataDirectory, task.Id);
@@ -138,6 +152,7 @@ public class DownloadQueueManager : IDisposable
 
     public void Remove(DownloadTask task, bool deleteFiles = false)
     {
+        bool completed = task.Status == DownloadStatus.Completed;
         Pause(task);
 
         lock (_lock)
@@ -161,9 +176,15 @@ public class DownloadQueueManager : IDisposable
         {
             try
             {
-                if (File.Exists(task.FullPath))
+                if ((!task.UseStaging || completed) && File.Exists(task.FullPath))
                 {
                     File.Delete(task.FullPath);
+                }
+                if (task.UseStaging)
+                {
+                    File.Delete(task.WorkingPath);
+                    File.Delete(task.MediaWorkingPath);
+                    File.Delete(task.MediaWorkingPath + ".idmlite.part");
                 }
                 string meta = task.FullPath + ".idmlite.meta";
                 if (File.Exists(meta))
@@ -250,7 +271,15 @@ public class DownloadQueueManager : IDisposable
                 if (_pauseRequested.Contains(task.Id) || !Tasks.Contains(task)) return;
             }
             task.ErrorMessage = null;
+            var limiter = new SpeedLimiter(task.SpeedLimitBytesPerSecond) { Parent = _sharedSpeedLimiter };
+            task.TransferLimiter = limiter;
+            string? actualOutput = null;
             SaveQueue();
+            if (task.ReadyOutput != null)
+            {
+                await RecoverPublicationAsync(task).ConfigureAwait(false);
+                return;
+            }
             // Enforce .mp4 for any video or HLS task that might have had .ts
             if (task.FileName.EndsWith(".ts", StringComparison.OrdinalIgnoreCase))
             {
@@ -296,8 +325,9 @@ public class DownloadQueueManager : IDisposable
                     }
                 }
 
-                var ytDlp = new YtDlpDownloader(task.Url, task.FullPath)
+                var ytDlp = new YtDlpDownloader(task.Url, task.MediaWorkingPath)
                 {
+                    SpeedLimitBytesPerSecond = limiter.EffectiveLimit,
                     FragmentConcurrency = _settingsManager.Current.MaxConnectionsPerDownload,
                     Cookies = task.Cookies,
                     Referer = task.Referer,
@@ -316,7 +346,7 @@ public class DownloadQueueManager : IDisposable
 
                 ytDlp.StatusChanged += (s, status) =>
                 {
-                    task.Status = status;
+                    task.Status = status == DownloadStatus.Completed ? DownloadStatus.Verifying : status;
                     TaskUpdated?.Invoke(this, task);
                 };
 
@@ -328,11 +358,7 @@ public class DownloadQueueManager : IDisposable
 
                 ytDlp.Completed += (s, finalFile) =>
                 {
-                    if (!string.IsNullOrEmpty(finalFile) && !string.Equals(task.FullPath, finalFile, StringComparison.OrdinalIgnoreCase))
-                    {
-                        task.FileName = Path.GetFileName(finalFile);
-                        task.SaveDirectory = Path.GetDirectoryName(finalFile) ?? task.SaveDirectory;
-                    }
+                    actualOutput = finalFile;
                     task.ActualChecksum = ytDlp.ComputedSha256;
                     task.IsVerified = !string.IsNullOrEmpty(task.ActualChecksum);
                 };
@@ -352,8 +378,10 @@ public class DownloadQueueManager : IDisposable
                     task.FileName = UniversalVideoDownloader.EnsureMp4Extension(task.FileName);
                     task.ConnectionCount = _settingsManager.Current.MaxConnectionsPerDownload;
 
-                    var univFallback = new UniversalVideoDownloader(task.FallbackStreamUrl, task.FullPath, _sharedSpeedLimiter)
+                    var univFallback = new UniversalVideoDownloader(task.FallbackStreamUrl, task.MediaWorkingPath, limiter)
                     {
+                        UseStaging = task.UseStaging,
+                        DestinationNameHint = task.FileName,
                         CookieSourceUrl = task.Url,
                         RecoveryFilePath = task.RecoveryFilePath,
                         ConnectionCount = task.ConnectionCount,
@@ -376,7 +404,7 @@ public class DownloadQueueManager : IDisposable
 
                     univFallback.StatusChanged += (s, status) =>
                     {
-                        task.Status = status;
+                        task.Status = status == DownloadStatus.Completed ? DownloadStatus.Verifying : status;
                         TaskUpdated?.Invoke(this, task);
                     };
 
@@ -388,11 +416,7 @@ public class DownloadQueueManager : IDisposable
 
                     univFallback.Completed += (s, finalFile) =>
                     {
-                        if (!string.IsNullOrEmpty(finalFile) && !string.Equals(task.FullPath, finalFile, StringComparison.OrdinalIgnoreCase))
-                        {
-                            task.FileName = Path.GetFileName(finalFile);
-                            task.SaveDirectory = Path.GetDirectoryName(finalFile) ?? task.SaveDirectory;
-                        }
+                        actualOutput = finalFile;
                         task.ActualChecksum = univFallback.ComputedSha256;
                         task.IsVerified = !string.IsNullOrEmpty(task.ActualChecksum);
                     };
@@ -404,7 +428,7 @@ public class DownloadQueueManager : IDisposable
             }
             else if (task.IsHls)
             {
-                var hls = new HlsDownloader(task.Url, task.FullPath, _settingsManager.Current.MaxConnectionsPerDownload, _sharedSpeedLimiter)
+                var hls = new HlsDownloader(task.Url, task.MediaWorkingPath, _settingsManager.Current.MaxConnectionsPerDownload, limiter)
                 {
                     Referer = task.Referer,
                     UserAgent = task.UserAgent,
@@ -423,7 +447,7 @@ public class DownloadQueueManager : IDisposable
 
                 hls.StatusChanged += (s, status) =>
                 {
-                    task.Status = status;
+                    task.Status = status == DownloadStatus.Completed ? DownloadStatus.Verifying : status;
                     TaskUpdated?.Invoke(this, task);
                 };
 
@@ -435,11 +459,7 @@ public class DownloadQueueManager : IDisposable
 
                 hls.Completed += (s, finalFile) =>
                 {
-                    if (!string.IsNullOrEmpty(finalFile) && !string.Equals(task.FullPath, finalFile, StringComparison.OrdinalIgnoreCase))
-                    {
-                        task.FileName = Path.GetFileName(finalFile);
-                        task.SaveDirectory = Path.GetDirectoryName(finalFile) ?? task.SaveDirectory;
-                    }
+                    actualOutput = finalFile;
                     task.ActualChecksum = hls.ComputedSha256;
                     task.IsVerified = !string.IsNullOrEmpty(task.ActualChecksum);
                 };
@@ -453,8 +473,10 @@ public class DownloadQueueManager : IDisposable
                 task.FileName = UniversalVideoDownloader.EnsureMp4Extension(task.FileName);
                 task.ConnectionCount = _settingsManager.Current.MaxConnectionsPerDownload;
 
-                var univ = new UniversalVideoDownloader(task.Url, task.FullPath, _sharedSpeedLimiter)
+                var univ = new UniversalVideoDownloader(task.Url, task.MediaWorkingPath, limiter)
                 {
+                    UseStaging = task.UseStaging,
+                    DestinationNameHint = task.FileName,
                     RecoveryFilePath = task.RecoveryFilePath,
                     ConnectionCount = task.ConnectionCount,
                     Referer = task.Referer,
@@ -476,7 +498,7 @@ public class DownloadQueueManager : IDisposable
 
                 univ.StatusChanged += (s, status) =>
                 {
-                    task.Status = status;
+                    task.Status = status == DownloadStatus.Completed ? DownloadStatus.Verifying : status;
                     TaskUpdated?.Invoke(this, task);
                 };
 
@@ -488,11 +510,7 @@ public class DownloadQueueManager : IDisposable
 
                 univ.Completed += (s, finalFile) =>
                 {
-                    if (!string.IsNullOrEmpty(finalFile) && !string.Equals(task.FullPath, finalFile, StringComparison.OrdinalIgnoreCase))
-                    {
-                        task.FileName = Path.GetFileName(finalFile);
-                        task.SaveDirectory = Path.GetDirectoryName(finalFile) ?? task.SaveDirectory;
-                    }
+                    actualOutput = finalFile;
                     task.ActualChecksum = univ.ComputedSha256;
                     task.IsVerified = !string.IsNullOrEmpty(task.ActualChecksum);
                 };
@@ -506,15 +524,16 @@ public class DownloadQueueManager : IDisposable
                 task.ConnectionCount = Math.Min(task.ConnectionCount, _settingsManager.Current.MaxConnectionsPerDownload);
                 var downloader = new SegmentedDownloader(
                     task.Url,
-                    task.FullPath,
+                    task.WorkingPath,
                     task.ConnectionCount,
-                    _sharedSpeedLimiter)
+                    limiter)
                 {
                     Referer = task.Referer,
                     UserAgent = task.UserAgent,
                     Cookies = task.Cookies,
                     CustomHeaders = task.CustomHeaders,
                     SkipResolver = task.IsDirect,
+                    DestinationNameHint = task.FileName,
                     RecoveryFilePath = task.RecoveryFilePath,
                     TotalBytes = task.TotalSize
                 };
@@ -542,7 +561,7 @@ public class DownloadQueueManager : IDisposable
 
                 downloader.StatusChanged += (s, status) =>
                 {
-                    task.Status = status;
+                    task.Status = status == DownloadStatus.Completed ? DownloadStatus.Verifying : status;
                     TaskUpdated?.Invoke(this, task);
                 };
 
@@ -561,17 +580,18 @@ public class DownloadQueueManager : IDisposable
             {
                 if (_pauseRequested.Contains(task.Id) || !Tasks.Contains(task) || task.Status == DownloadStatus.Paused) return;
             }
-            if (!File.Exists(task.FullPath)) throw new IOException("İndirme motoru çıktı dosyası üretmedi.");
+            string output = actualOutput ?? task.WorkingPath;
+            if (!File.Exists(output)) throw new IOException("İndirme motoru çıktı dosyası üretmedi.");
 
             string? computedHash = task.Downloader?.ComputedSha256
                                    ?? task.HlsEngine?.ComputedSha256
                                    ?? task.YtDlpEngine?.ComputedSha256
                                    ?? task.UniversalVideoEngine?.ComputedSha256;
-            if (string.IsNullOrEmpty(computedHash) && File.Exists(task.FullPath))
+            if (string.IsNullOrEmpty(computedHash) && File.Exists(output))
             {
                 try
                 {
-                    computedHash = await ChecksumHelper.ComputeHashAsync(task.FullPath, task.ChecksumType ?? "SHA256").ConfigureAwait(false);
+                    computedHash = await ChecksumHelper.ComputeHashAsync(output, task.ChecksumType ?? "SHA256").ConfigureAwait(false);
                 }
                 catch { }
             }
@@ -584,24 +604,40 @@ public class DownloadQueueManager : IDisposable
             task.ResumeOnRestart = false;
             task.RetryCount = 0;
 
-            if (!string.IsNullOrWhiteSpace(task.ExpectedChecksum) && !string.IsNullOrWhiteSpace(task.ActualChecksum))
+            bool checksumMatches = string.IsNullOrWhiteSpace(task.ExpectedChecksum) ||
+                string.Equals(task.ActualChecksum?.Trim(), task.ExpectedChecksum.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (!checksumMatches)
             {
-                bool match = string.Equals(task.ActualChecksum.Trim(), task.ExpectedChecksum.Trim(), StringComparison.OrdinalIgnoreCase);
-                task.IsVerified = match;
-                if (!match)
-                {
-                    task.Status = DownloadStatus.Error;
-                    task.ErrorMessage = "Doğrulama Başarısız (Özet uyuşmazlığı)";
-                }
-                else
-                {
-                    task.Status = DownloadStatus.Completed;
-                }
+                task.Status = DownloadStatus.Error;
+                task.ErrorMessage = "Doğrulama Başarısız (Özet uyuşmazlığı)";
+                task.IsVerified = false;
             }
             else
             {
-                task.IsVerified = !string.IsNullOrWhiteSpace(computedHash);
-                task.Status = DownloadStatus.Completed;
+                lock (_lock)
+                {
+                    if (_pauseRequested.Contains(task.Id) || !Tasks.Contains(task)) return;
+                    task.IsVerified = !string.IsNullOrWhiteSpace(computedHash);
+                    if (task.UseStaging)
+                    {
+                        if (actualOutput != null)
+                        {
+                            string name = task.UniversalVideoEngine?.SuggestedTitle ?? task.FileName;
+                            task.FileName = Path.ChangeExtension(name, Path.GetExtension(output));
+                        }
+                        ReserveFinalName(task);
+                        task.ReadyOutput = output;
+                        RecoveryStore.SaveTask(task);
+                        File.Move(output, task.FullPath, overwrite: false);
+                        task.ReadyOutput = null;
+                    }
+                    else if (actualOutput != null)
+                    {
+                        task.FileName = Path.GetFileName(output);
+                        task.SaveDirectory = Path.GetDirectoryName(output)!;
+                    }
+                    task.Status = DownloadStatus.Completed;
+                }
             }
 
             SaveQueue();
@@ -632,6 +668,7 @@ public class DownloadQueueManager : IDisposable
         {
             lock (_lock)
             {
+                task.TransferLimiter = null;
                 task.Downloader?.Dispose(); task.Downloader = null;
                 task.HlsEngine?.Dispose(); task.HlsEngine = null;
                 task.YtDlpEngine?.Dispose(); task.YtDlpEngine = null;
@@ -644,6 +681,46 @@ public class DownloadQueueManager : IDisposable
             SaveQueue();
             TriggerScheduler();
         }
+    }
+
+    private async Task RecoverPublicationAsync(DownloadTask task)
+    {
+        string output = task.ReadyOutput!;
+        if (!File.Exists(output))
+        {
+            if (!File.Exists(task.FullPath) || string.IsNullOrWhiteSpace(task.ActualChecksum) ||
+                !string.Equals(task.ActualChecksum,
+                    await ChecksumHelper.ComputeHashAsync(task.FullPath, task.ChecksumType ?? "SHA256").ConfigureAwait(false),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new IOException("The verified download could not be located.");
+        }
+        lock (_lock)
+        {
+            if (_pauseRequested.Contains(task.Id) || !Tasks.Contains(task)) return;
+            if (File.Exists(output))
+            {
+                ReserveFinalName(task);
+                RecoveryStore.SaveTask(task);
+                File.Move(output, task.FullPath, overwrite: false);
+            }
+            task.ReadyOutput = null;
+            task.Status = DownloadStatus.Completed;
+            task.ResumeOnRestart = false;
+            task.RetryAfterUtc = null;
+        }
+        SaveQueue();
+        TaskCompleted?.Invoke(this, task);
+        TaskUpdated?.Invoke(this, task);
+    }
+
+    private void ReserveFinalName(DownloadTask task)
+    {
+        string stem = Path.GetFileNameWithoutExtension(task.FileName);
+        string extension = Path.GetExtension(task.FileName);
+        for (int suffix = 2; File.Exists(task.FullPath) || Directory.Exists(task.FullPath) ||
+            Tasks.Any(other => other != task && string.Equals(other.FullPath, task.FullPath, StringComparison.OrdinalIgnoreCase));
+            suffix++)
+            task.FileName = $"{stem} ({suffix}){extension}";
     }
 
     private static readonly JsonSerializerOptions QueueJson = CreateQueueJson();
@@ -702,20 +779,22 @@ public class DownloadQueueManager : IDisposable
         {
             task.ResolveArchiveDestination = false;
             if (!string.IsNullOrWhiteSpace(suggestedName) &&
-                CategoryDetector.FromExtension(Path.GetExtension(suggestedName)) == DownloadCategory.Compressed)
+                CategoryDetector.FromExtension(Path.GetExtension(suggestedName)) is DownloadCategory.Compressed or DownloadCategory.Programs or DownloadCategory.Documents)
             {
-                string folder = _settingsManager.GetDirectoryForCategory(DownloadCategory.Compressed);
+                var category = CategoryDetector.FromExtension(Path.GetExtension(suggestedName));
+                string folder = _settingsManager.GetDirectoryForCategory(category);
                 string name = SegmentedDownloader.CleanFileName(suggestedName);
                 string stem = Path.GetFileNameWithoutExtension(name);
                 string extension = Path.GetExtension(name);
                 for (int suffix = 2; DestinationTaken(Path.Combine(folder, name)); suffix++)
                     name = $"{stem} ({suffix}){extension}";
-                task.Category = DownloadCategory.Compressed;
+                task.Category = category;
                 task.FileName = name;
                 task.SaveDirectory = folder;
             }
             RecoveryStore.SaveTask(task);
-            return task.FullPath;
+            if (task.Downloader != null) task.Downloader.DestinationNameHint = task.FileName;
+            return task.WorkingPath;
         }
 
         bool DestinationTaken(string path) => File.Exists(path) || Directory.Exists(path) ||
@@ -773,7 +852,7 @@ public class DownloadQueueManager : IDisposable
         var byId = loaded.GroupBy(t => t.Id).ToDictionary(g => g.Key, g => g.First());
         foreach (var record in RecoveryStore.Scan(directories).OrderBy(r => r.WrittenUtc)) byId[record.Task.Id] = record.Task;
         foreach (var item in byId.Values.OrderByDescending(t => t.DateAdded)) {
-            bool interrupted = item.Status is DownloadStatus.Downloading or DownloadStatus.Connecting or DownloadStatus.Queued or DownloadStatus.Assembling or DownloadStatus.Verifying ||
+            bool interrupted = item.ReadyOutput != null || item.Status is DownloadStatus.Downloading or DownloadStatus.Connecting or DownloadStatus.Queued or DownloadStatus.Assembling or DownloadStatus.Verifying ||
                 item.ResumeOnRestart && item.Status is DownloadStatus.Error or DownloadStatus.Paused;
             if (interrupted) {
                 item.Status = _settingsManager.Current.ResumeInterruptedDownloads ? DownloadStatus.Queued : DownloadStatus.Paused;

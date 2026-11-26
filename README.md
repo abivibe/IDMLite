@@ -14,7 +14,7 @@ IDMLite is an open-source desktop application that allows you to easily and quic
 
 ## Installation
 
-- Download `IDMLite_Setup_v1.0.2_Security.exe` from the Releases section.
+- Download the Windows installer attached to the release you want to install.
 - Run the setup file and follow the on-screen instructions to complete the installation.
 - Reload the unpacked browser extension after updating. The browser and desktop app use a Windows user-scoped native connection.
 
@@ -27,6 +27,13 @@ The IDMLite browser extension is not hosted on any official web store (Chrome We
 - Click the "Load unpacked" button in the top-left area.
 - Navigate to the program installation folder (default: C:\Program Files\IDMLite\extension) and select the "extension" folder.
 - Once installed, the download button will appear automatically on pages with playable media.
+
+## v1.0.3
+
+- BitTorrent supports file selection, a peer view, and resuming saved transfers after restarting IDMLite.
+- Set a per-download speed limit from the progress window or the main list.
+- In-progress transfers use numbered temporary names. Completed downloads use the original filename and format.
+- Executable packages and documents go to their configured Programs and Documents folders.
 
 ## Installer verification
 
@@ -50,7 +57,7 @@ IDMLite, internet üzerindeki video, müzik ve dosyaları bilgisayarınıza yük
 
 ## Kurulum
 
-- Releases (Sürümler) bölümünden `IDMLite_Setup_v1.0.2_Security.exe` dosyasını indirin.
+- Kurmak istediğiniz sürümün Windows kurucusunu Releases (Sürümler) bölümünden indirin.
 - Kurulum dosyasını çalıştırıp ekrandaki yönergeleri takip ederek programı kurun.
 - Güncellemeden sonra paketlenmemiş tarayıcı uzantısını yeniden yükleyin. Tarayıcı ve masaüstü uygulaması Windows kullanıcısına özel yerel bağlantıyı kullanır.
 
@@ -63,6 +70,13 @@ IDMLite tarayıcı uzantısı herhangi bir resmi web uzantı mağazasında (Chro
 - Sol üstte açılan "Paketlenmemiş öğe yükle" butonuna tıklayın.
 - Programın kurulu olduğu dosya konumuna gidin (Varsayılan konum: C:\Program Files\IDMLite\extension) ve "extension" klasörünü seçin.
 - Yükleme tamamlandıktan sonra video izlediğiniz sayfalarda indirme butonu otomatik olarak görünecektir.
+
+## v1.0.3
+
+- BitTorrent indirmelerinde dosya seçimi, eş listesi ve uygulamayı kapatıp açtıktan sonra devam ettirme desteği var.
+- Hız sınırı, her indirme için ilerleme penceresinden veya ana listeden ayarlanabilir.
+- İndirmeler numaralı geçici adlarla başlar, tamamlandığında asıl dosya adı ve biçimi kullanılır.
+- Çalıştırılabilir paketler ve belgeler ayarlardaki Programs ve Documents klasörlerine kaydedilir.
 
 ## Kurulum dosyası doğrulaması
 

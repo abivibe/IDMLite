@@ -8,6 +8,17 @@ public class SpeedLimiter
     private long _maxBytesPerSecond;
     private double _availableTokens;
     private long _lastTicks;
+    private TaskCompletionSource _limitChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public SpeedLimiter? Parent { get; init; }
+    public long EffectiveLimit
+    {
+        get
+        {
+            long own = MaxBytesPerSecond;
+            long parent = Parent?.EffectiveLimit ?? 0;
+            return own == 0 ? parent : parent == 0 ? own : Math.Min(own, parent);
+        }
+    }
 
     public long MaxBytesPerSecond
     {
@@ -16,8 +27,11 @@ public class SpeedLimiter
         {
             lock (_lock)
             {
+                if (_maxBytesPerSecond == Math.Max(0, value)) return;
+                _limitChanged.TrySetResult();
+                _limitChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 Interlocked.Exchange(ref _maxBytesPerSecond, Math.Max(0, value));
-                _availableTokens = _maxBytesPerSecond;
+                _availableTokens = _maxBytesPerSecond / 4.0;
                 _lastTicks = Stopwatch.GetTimestamp();
             }
         }
@@ -31,35 +45,28 @@ public class SpeedLimiter
 
     public async Task ThrottleAsync(int byteCount, CancellationToken cancellationToken = default)
     {
-        long limit = MaxBytesPerSecond;
-        if (limit <= 0 || byteCount <= 0)
-        {
-            return;
-        }
-
-        double secondsToWait = 0;
+        if (byteCount <= 0) return;
+        TimeSpan delay = TimeSpan.Zero;
+        Task limitChanged;
         lock (_lock)
         {
-            long currentTicks = Stopwatch.GetTimestamp();
-            double elapsedSeconds = (double)(currentTicks - _lastTicks) / Stopwatch.Frequency;
-            _lastTicks = currentTicks;
-
-            // Refill tokens based on elapsed time, capped at 1 second of bandwidth
-            _availableTokens = Math.Min(limit, _availableTokens + (elapsedSeconds * limit));
-
-            // Subtract consumed bytes
-            _availableTokens -= byteCount;
-
-            // If deficit, calculate required wait time
-            if (_availableTokens < 0)
+            long limit = _maxBytesPerSecond;
+            if (limit > 0)
             {
-                secondsToWait = -_availableTokens / limit;
+                long now = Stopwatch.GetTimestamp();
+                double seconds = Stopwatch.GetElapsedTime(_lastTicks, now).TotalSeconds;
+                _lastTicks = now;
+                _availableTokens = Math.Min(limit / 4.0, _availableTokens + seconds * limit) - byteCount;
+                if (_availableTokens < 0) delay = TimeSpan.FromSeconds(-_availableTokens / limit);
             }
+            limitChanged = _limitChanged.Task;
         }
 
-        if (secondsToWait > 0)
+        if (delay > TimeSpan.Zero)
         {
-            await Task.Delay(TimeSpan.FromSeconds(Math.Min(secondsToWait, 5.0)), cancellationToken).ConfigureAwait(false);
+            try { await limitChanged.WaitAsync(delay, cancellationToken).ConfigureAwait(false); }
+            catch (TimeoutException) { }
         }
+        if (Parent != null) await Parent.ThrottleAsync(byteCount, cancellationToken).ConfigureAwait(false);
     }
 }

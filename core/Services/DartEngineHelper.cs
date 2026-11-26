@@ -101,9 +101,14 @@ public static class DartEngineHelper
         return DownloadAsync(args, destinationPath, progressCallback, ct);
     }
     public static Task<bool> DownloadYouTubeAsync(string url, string destinationPath, string? ffmpegPath,
-        IProgress<DartProgressDto>? progressCallback, CancellationToken ct = default)
+        IProgress<DartProgressDto>? progressCallback, CancellationToken ct = default, long speedLimit = 0)
     {
         var args = new List<string> { "yt-download", url, destinationPath };
+        if (speedLimit > 0)
+        {
+            args.Add("--limit-rate");
+            args.Add(speedLimit.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
         if (!string.IsNullOrEmpty(ffmpegPath)) { args.Add("--ffmpeg"); args.Add(ffmpegPath); }
         return DownloadAsync(args, destinationPath, progressCallback, ct, reportFailure: true);
     }

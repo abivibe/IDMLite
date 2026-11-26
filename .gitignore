@@ -8,6 +8,9 @@
 
 # Build outputs
 bin/
+!/dart_engine/bin/
+/dart_engine/bin/*
+!/dart_engine/bin/dart_engine.dart
 obj/
 publish/
 Debug/

@@ -11,7 +11,7 @@ if (-not (Test-Path $distDir)) {
     New-Item -ItemType Directory -Force -Path $distDir | Out-Null
 }
 
-$zipPath = Join-Path $distDir "IDMLite_Extension_v1.0.2.zip"
+$zipPath = Join-Path $distDir "IDMLite_Extension_v1.0.3.zip"
 if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
 }

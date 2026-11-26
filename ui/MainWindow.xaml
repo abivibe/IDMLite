@@ -1,351 +1,845 @@
 <Window x:Class="IDMLite.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:models="clr-namespace:IDMLite.Models"
-        Title="{DynamicResource Str_AppTitle}" 
-        Height="704" Width="1120" FontSize="13" UseLayoutRounding="True"
-        MinHeight="480" MinWidth="750"
+        xmlns:windows="clr-namespace:IDMLite.Windows"
+        Title="{DynamicResource Str_AppTitle}"
+        Height="720" Width="1180" FontSize="13" UseLayoutRounding="True"
+        MinHeight="520" MinWidth="880"
         WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanResize"
         Background="{DynamicResource WindowBgBrush}">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="36"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0"
+                      CornerRadius="12"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.InputBindings>
+        <KeyBinding Key="N" Modifiers="Control" Command="{x:Static ApplicationCommands.New}"/>
+        <KeyBinding Key="O" Modifiers="Control" Command="{x:Static ApplicationCommands.Open}"/>
+    </Window.InputBindings>
+
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static ApplicationCommands.New}" Executed="CmdNewDownload_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.Open}" Executed="CmdSettings_Executed"/>
+    </Window.CommandBindings>
 
     <Window.TaskbarItemInfo>
         <TaskbarItemInfo x:Name="MainTaskbarInfo"/>
     </Window.TaskbarItemInfo>
 
     <Window.Resources>
-        <Style x:Key="ToolbarButtonStyle" TargetType="Button">
+        <!-- Sidebar Navigation Item Button -->
+        <Style x:Key="SidebarNavButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="Padding" Value="7,5"/>
-            <Setter Property="MinHeight" Value="40"/>
-            <Setter Property="Margin" Value="1,0"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{DynamicResource RowHoverBrush}"/>
-                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="10,1,10,1"/>
+            <Setter Property="Padding" Value="12,0,12,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="navBd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="navBd" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+
+        <!-- Sub-item in Dosya Türleri -->
+        <Style x:Key="SidebarSubNavButtonStyle" TargetType="Button" BasedOn="{StaticResource SidebarNavButtonStyle}">
+            <Setter Property="Height" Value="31"/>
+            <Setter Property="Padding" Value="34,0,12,0"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+
+        <!-- Toolbar Ghost Button -->
+        <Style x:Key="ActionToolbarButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="btnBorder" Background="{TemplateBinding Background}" CornerRadius="7" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource SidebarHoverBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Background" Value="{DynamicResource SidebarSelectedBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.38"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- DataGrid Cell Text -->
         <Style x:Key="DownloadCellText" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="6,0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="12.5"/>
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
         </Style>
+
+        <!-- Overflow ... Row Button -->
+        <Style x:Key="RowOverflowButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource SidebarSelectedBrush}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Row Context Menu -->
+        <ContextMenu x:Key="DownloadRowContextMenu">
+            <MenuItem Header="{DynamicResource Str_OpenFile}" Click="ContextOpen_Click"/>
+            <MenuItem Header="{DynamicResource Str_ShowInFolder}" Click="ContextOpenFolder_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Str_ResumeClean}" Click="BtnResume_Click"/>
+            <MenuItem Header="{DynamicResource Str_PauseClean}" Click="BtnPause_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Torrent_Rate}" Click="ContextSpeedLimit_Click"/>
+            <MenuItem Header="{DynamicResource Str_Details}" Click="ContextDetails_Click"/>
+            <MenuItem Header="{DynamicResource Str_VerifySha256}" IsEnabled="{Binding IsSingleFile}" Click="ContextVerifyChecksum_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Str_CopyUrl}" Click="ContextCopyUrl_Click"/>
+            <MenuItem Header="{DynamicResource Str_Delete}" Click="BtnDelete_Click"/>
+            <MenuItem Header="{DynamicResource Str_DeleteAll}" IsEnabled="{Binding IsSingleFile}" Click="ContextDeleteAll_Click"/>
+        </ContextMenu>
+
+        <!-- Tools Dropdown Menu -->
+        <ContextMenu x:Key="ToolsDropdownMenu">
+            <MenuItem Header="{DynamicResource Str_Settings}" InputGestureText="Ctrl+O" Click="BtnSettings_Click"/>
+            <MenuItem Header="{DynamicResource Str_Extension}" Click="BtnExtension_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Str_ResumeAll}" Click="BtnResumeAll_Click"/>
+            <MenuItem Header="{DynamicResource Str_StopAll}" Click="BtnStopAll_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Str_Support}" Click="BtnSupport_Click"/>
+            <MenuItem Header="{DynamicResource Str_About}" Click="MenuAbout_Click"/>
+            <Separator/>
+            <MenuItem Header="{DynamicResource Str_Exit}" InputGestureText="Alt+F4" Click="MenuExit_Click"/>
+        </ContextMenu>
     </Window.Resources>
 
-    <Grid Background="{DynamicResource WindowBgBrush}">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/> <!-- Main Menu -->
-            <RowDefinition Height="Auto"/> <!-- Big IDM Toolbar -->
-            <RowDefinition Height="*"/>    <!-- Split: Sidebar + DataGrid -->
-            <RowDefinition Height="Auto"/> <!-- Status Bar -->
-        </Grid.RowDefinitions>
-
-        <!-- 1. Top Menu -->
-        <Menu Grid.Row="0" Background="{DynamicResource HeaderBgBrush}" Foreground="{DynamicResource TextBrush}">
-            <MenuItem Header="{DynamicResource Str_File}">
-                <MenuItem Header="{DynamicResource Str_NewDownload}" InputGestureText="Ctrl+N" Click="MenuAdd_Click"/>
-                <Separator/>
-                <MenuItem Header="{DynamicResource Str_Exit}" InputGestureText="Alt+F4" Click="MenuExit_Click"/>
-            </MenuItem>
-            <MenuItem Header="{DynamicResource Str_Downloads}">
-                <MenuItem Header="{DynamicResource Str_Resume}" Click="BtnResume_Click"/>
-                <MenuItem Header="{DynamicResource Str_Pause}" Click="BtnPause_Click"/>
-                <MenuItem Header="{DynamicResource Str_StopAll}" Click="BtnStopAll_Click"/>
-                <MenuItem Header="{DynamicResource Str_ResumeAll}" Click="BtnResumeAll_Click"/>
-                <Separator/>
-                <MenuItem Header="{DynamicResource Str_Delete}" Click="BtnDelete_Click"/>
-            </MenuItem>
-            <MenuItem Header="{DynamicResource Str_Tools}">
-                <MenuItem Header="{DynamicResource Str_Extension}" Click="BtnExtension_Click"/>
-                <Separator/>
-                <MenuItem Header="{DynamicResource Str_Settings}" InputGestureText="Ctrl+O" Click="BtnSettings_Click"/>
-            </MenuItem>
-            <MenuItem Header="{DynamicResource Str_Help}">
-                <MenuItem Header="{DynamicResource Str_Support}" Click="BtnSupport_Click"/>
-                <Separator/>
-                <MenuItem Header="{DynamicResource Str_About}" Click="MenuAbout_Click"/>
-            </MenuItem>
-        </Menu>
-
-        <!-- 2. Classic Big Icon IDM Toolbar -->
-        <Border Grid.Row="1" Background="{DynamicResource PanelBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,12">
-            <StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="2,0,0,10">
-                    <Border Width="32" Height="32" CornerRadius="8" Background="{DynamicResource PrimaryActionBrush}">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M8,2 V11 M4,7 L8,11 12,7 M3,14 H13" Stroke="{DynamicResource PrimaryActionTextBrush}" StrokeThickness="1.6" Width="16" Height="16" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <TextBlock Text="IDMLite" FontSize="24" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{DynamicResource Str_AllDownloads}" FontSize="13" Foreground="{DynamicResource TextSecondaryBrush}" Margin="14,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
-                <WrapPanel Orientation="Horizontal">
-                <!-- Add URL -->
-                <Button Background="{DynamicResource PrimaryActionBrush}" Foreground="{DynamicResource PrimaryActionTextBrush}" Click="BtnAddUrl_Click" ToolTip="{DynamicResource Str_NewDownload}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M8,2 V14 M2,8 H14" Stroke="{DynamicResource PrimaryActionTextBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_AddUrl}" Foreground="{DynamicResource PrimaryActionTextBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Resume -->
-                <Button Click="BtnResume_Click" ToolTip="{DynamicResource Str_Resume}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M5,2 L13,8 5,14 Z" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_Resume}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Pause -->
-                <Button Click="BtnPause_Click" ToolTip="{DynamicResource Str_Pause}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M5,2 V14 M11,2 V14" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_Pause}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Stop All -->
-                <Button Click="BtnStopAll_Click" ToolTip="{DynamicResource Str_StopAll}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M3,3 H13 V13 H3 Z" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_StopAll}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Delete -->
-                <Button Click="BtnDelete_Click" ToolTip="{DynamicResource Str_Delete}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M2,4 H14 M4,4 L5,14 H11 L12,4 M6,4 V2 H10 V4" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_Delete}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Open Folder -->
-                <Button Click="BtnOpenFolder_Click" ToolTip="{DynamicResource Str_ShowInFolder}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M1,4 H6 L8,6 H15 L13,13 H1 Z" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_ShowInFolder}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="6,2"/>
-
-                <!-- Minimize to System Tray -->
-                <Button Click="BtnTrayMinimize_Click" ToolTip="{DynamicResource Str_MinimizeToTray}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M3,5 L8,10 13,5" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_TrayMinimize}" FontWeight="Medium" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="6,2"/>
-
-                <!-- Settings -->
-                <Button Click="BtnSettings_Click" ToolTip="{DynamicResource Str_Settings}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M3,4 H13 M3,8 H13 M3,12 H13 M6,2 V6 M10,6 V10 M6,10 V14" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_Tools}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Extension -->
-                <Button Click="BtnExtension_Click" ToolTip="{DynamicResource Str_Extension}" Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                        <Path IsHitTestVisible="False" Focusable="False" Data="M8,1 A7,7 0 1 0 8,15 A7,7 0 1 0 8,1 M1,8 H15 M8,1 V15" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="15" Height="15" Stretch="Uniform" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource Str_Extension}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-            </WrapPanel>
-            </StackPanel>
-        </Border>
-
-        <!-- 3. Main Workspace: Category Sidebar + Downloads Grid -->
-        <Grid Grid.Row="2" Margin="16,12,16,12">
+    <Border x:Name="RootWindowBorder"
+            Background="{DynamicResource WindowBgBrush}"
+            BorderBrush="{DynamicResource BorderBrush}"
+            BorderThickness="1"
+            SnapsToDevicePixels="True">
+        <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="200" MinWidth="160" MaxWidth="350"/>
-                <ColumnDefinition Width="4"/> <!-- GridSplitter -->
+                <ColumnDefinition Width="228"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Left Category Tree -->
-            <Border Grid.Column="0" Background="{DynamicResource SidebarBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="9" Padding="8,6">
+            <!-- ========================================================= -->
+            <!--  LEFT NAVIGATION SIDEBAR                                  -->
+            <!-- ========================================================= -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource SidebarBgBrush}"
+                    BorderBrush="{DynamicResource BorderSubtleBrush}"
+                    BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <TextBlock x:Name="LblCategoriesHeader" DockPanel.Dock="Top" Text="{DynamicResource Str_Categories}" FontWeight="Bold" FontSize="11" 
-                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="12,10,12,6"/>
+                    <!-- Brand Header -->
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="18,18,14,18">
+                        <Viewbox Width="24" Height="24" Margin="0,0,11,0" VerticalAlignment="Center">
+                            <Canvas Width="24" Height="24">
+                                <Path Data="M12,3 L12,15 M7,10.5 L12,15.5 L17,10.5"
+                                      Stroke="{DynamicResource AccentBrush}" StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                                <Path Data="M4,17 L4,19.5 C4,20.3 4.7,21 5.5,21 L18.5,21 C19.3,21 20,20.3 20,19.5 L20,17"
+                                      Stroke="{DynamicResource AccentBrush}" StrokeThickness="2.2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Canvas>
+                        </Viewbox>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="IDMLite" FontSize="15.5" FontWeight="Bold" Foreground="{DynamicResource TextBrush}" LineHeight="18"/>
+                            <TextBlock Text="Download Manager" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,1,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
 
-                    <TreeView x:Name="TreeCategories" BorderThickness="0" Background="Transparent" 
-                              SelectedItemChanged="TreeCategories_SelectedItemChanged" Margin="4,0">
-                        <TreeView.Resources>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="{DynamicResource RowSelectedColor}"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="{DynamicResource RowSelectedColor}"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="{DynamicResource TextColor}"/>
-                            <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="{DynamicResource TextColor}"/>
-                        </TreeView.Resources>
-                        <TreeViewItem x:Name="TreeAll" Header="{DynamicResource Str_AllDownloads}" Tag="All" IsSelected="True" FontWeight="SemiBold">
-                            <TreeViewItem x:Name="TreeUnfinished" Header="{DynamicResource Str_Unfinished}" Tag="Unfinished"/>
-                            <TreeViewItem x:Name="TreeFinished" Header="{DynamicResource Str_Finished}" Tag="Finished"/>
-                        </TreeViewItem>
+                    <!-- Scrollable Nav List with Floating Animated Active Pill -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <Grid x:Name="SidebarNavGrid" Margin="0,0,0,16">
+                            <!-- Floating Animated Selection Pill (Slides smoothly on click!) -->
+                            <Border x:Name="NavSelectionIndicator"
+                                    VerticalAlignment="Top"
+                                    HorizontalAlignment="Stretch"
+                                    Height="34"
+                                    Margin="10,0,10,0"
+                                    CornerRadius="8"
+                                    Background="{DynamicResource SidebarSelectedBrush}"
+                                    IsHitTestVisible="False"
+                                    Panel.ZIndex="0"
+                                    Opacity="0">
+                                <Border.RenderTransform>
+                                    <TranslateTransform x:Name="NavIndicatorTransform" Y="0"/>
+                                </Border.RenderTransform>
+                                <Border x:Name="NavAccentBar"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        Width="3.5" Height="18"
+                                        CornerRadius="2"
+                                        Background="{DynamicResource AccentBrush}"
+                                        RenderTransformOrigin="0.5,0.5">
+                                    <Border.RenderTransform>
+                                        <ScaleTransform x:Name="NavAccentScale" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#2CE66B" BlurRadius="8" ShadowDepth="0" Opacity="0.65"/>
+                                    </Border.Effect>
+                                </Border>
+                            </Border>
 
-                        <TreeViewItem x:Name="TreeTypes" Header="{DynamicResource Str_FileTypes}" Tag="Types" IsExpanded="True" FontWeight="SemiBold">
-                            <TreeViewItem x:Name="TreeCompressed" Header="{DynamicResource Str_Compressed}" Tag="Compressed"/>
-                            <TreeViewItem x:Name="TreeDocuments" Header="{DynamicResource Str_Documents}" Tag="Documents"/>
-                            <TreeViewItem x:Name="TreeMusic" Header="{DynamicResource Str_Music}" Tag="Music"/>
-                            <TreeViewItem x:Name="TreeVideo" Header="{DynamicResource Str_Video}" Tag="Video"/>
-                            <TreeViewItem x:Name="TreePrograms" Header="{DynamicResource Str_Programs}" Tag="Programs"/>
-                            <TreeViewItem x:Name="TreeOther" Header="{DynamicResource Str_Other}" Tag="Other"/>
-                        </TreeViewItem>
+                            <!-- Sidebar Items Stack -->
+                            <StackPanel x:Name="SidebarItemsStack" Panel.ZIndex="1">
+                                <!-- Section: Genel -->
+                                <TextBlock Text="{DynamicResource Str_SidebarGeneral}" FontSize="11" FontWeight="Medium"
+                                           Foreground="{DynamicResource TextMutedBrush}" Margin="20,4,14,6"/>
 
-                        <TreeViewItem x:Name="TreeQueues" Header="{DynamicResource Str_Queues}" Tag="Queues" IsExpanded="True" FontWeight="SemiBold">
-                            <TreeViewItem x:Name="TreeMainQueue" Header="{DynamicResource Str_MainQueue}" Tag="MainQueue"/>
-                        </TreeViewItem>
-                    </TreeView>
+                                <!-- Tüm İndirilenler -->
+                                <Button x:Name="NavAll" Tag="All" Style="{StaticResource SidebarNavButtonStyle}" Click="SidebarNav_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Path x:Name="IconAll" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M8,1 A7,7 0 1 0 8,15 A7,7 0 1 0 8,1 M8,4.5 V11 M5.5,8.5 L8,11 L10.5,8.5"/>
+                                        <TextBlock Grid.Column="1" Text="{DynamicResource Str_AllDownloadsNav}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="TxtCountAll" Grid.Column="2" Text="0" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    </Grid>
+                                </Button>
+
+                                <!-- Aktif İndirmeler -->
+                                <Button x:Name="NavUnfinished" Tag="Unfinished" Style="{StaticResource SidebarNavButtonStyle}" Click="SidebarNav_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Path x:Name="IconUnfinished" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M8,2 V10.5 M5,7.5 L8,10.5 L11,7.5 M2.5,12 V13.5 H13.5 V12"/>
+                                        <TextBlock Grid.Column="1" Text="{DynamicResource Str_ActiveDownloadsNav}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="TxtCountActive" Grid.Column="2" Text="0" FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    </Grid>
+                                </Button>
+
+                                <!-- Tamamlananlar -->
+                                <Button x:Name="NavFinished" Tag="Finished" Style="{StaticResource SidebarNavButtonStyle}" Click="SidebarNav_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Path x:Name="IconFinished" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M8,1 A7,7 0 1 0 8,15 A7,7 0 1 0 8,1 M5,8.2 L7.2,10.4 L11.2,5.8"/>
+                                        <TextBlock Grid.Column="1" Text="{DynamicResource Str_Finished}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="TxtCountCompleted" Grid.Column="2" Text="0" FontSize="11.5" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    </Grid>
+                                </Button>
+
+                                <!-- Section: Kategoriler -->
+                                <TextBlock Text="{DynamicResource Str_SidebarCategories}" FontSize="11" FontWeight="Medium"
+                                           Foreground="{DynamicResource TextMutedBrush}" Margin="20,18,14,6"/>
+
+                                <!-- BitTorrent -->
+                                <Button x:Name="NavTorrent" Tag="Torrent" Style="{StaticResource SidebarNavButtonStyle}" Click="SidebarNav_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="22"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Path Width="6" Height="9" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M1,1 L5,5 L1,9"/>
+                                        <Path x:Name="IconTorrent" Grid.Column="1" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M8,3 L3,12.5 L13,12.5 Z M8,1.5 A1.5,1.5 0 1 0 8,4.5 A1.5,1.5 0 1 0 8,1.5 M3,11 A1.5,1.5 0 1 0 3,14 A1.5,1.5 0 1 0 3,11 M13,11 A1.5,1.5 0 1 0 13,14 A1.5,1.5 0 1 0 13,11"/>
+                                        <TextBlock Grid.Column="2" Text="BitTorrent" VerticalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtCountTorrent" Grid.Column="3" Text="" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Button>
+
+                                <!-- Dosya Türleri (Expandable Parent) -->
+                                <Button x:Name="NavTypes" Tag="Types" Style="{StaticResource SidebarNavButtonStyle}" Click="SidebarTypesToggle_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="22"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Path x:Name="TypesChevron" Width="8" Height="5" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              Data="M1,1 L4.5,4.5 L8,1" RenderTransformOrigin="0.5,0.5">
+                                            <Path.RenderTransform>
+                                                <RotateTransform x:Name="TypesChevronRotate" Angle="0"/>
+                                            </Path.RenderTransform>
+                                        </Path>
+                                        <Path x:Name="IconTypes" Grid.Column="1" Width="15" Height="14" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V12.5 H1.5 Z"/>
+                                        <TextBlock Grid.Column="2" Text="{DynamicResource Str_FileTypes}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Button>
+
+                                <!-- Collapsible Sub-Categories -->
+                                <StackPanel x:Name="SubTypesPanel" ClipToBounds="True">
+                                    <Button x:Name="NavCompressed" Tag="Compressed" Style="{StaticResource SidebarSubNavButtonStyle}" Click="SidebarNav_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Path x:Name="IconCompressed" Width="13.5" Height="13.5" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                  Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                                  Data="M2,3 H14 V13 H2 Z M2,6.5 H14 M7,3 V13"/>
+                                            <TextBlock Grid.Column="1" Text="{DynamicResource Str_Compressed}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Button>
+
+                                    <Button x:Name="NavDocuments" Tag="Documents" Style="{StaticResource SidebarSubNavButtonStyle}" Click="SidebarNav_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Path x:Name="IconDocuments" Width="13.5" Height="14" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                  Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                  Data="M3,1.5 H9.5 L13,5 V14.5 H3 Z M9.5,1.5 V5 H13 M5.5,8.5 H10.5 M5.5,11.5 H9"/>
+                                            <TextBlock Grid.Column="1" Text="{DynamicResource Str_Documents}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Button>
+
+                                    <Button x:Name="NavMusic" Tag="Music" Style="{StaticResource SidebarSubNavButtonStyle}" Click="SidebarNav_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Path x:Name="IconMusic" Width="13.5" Height="14" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                  Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                  Data="M6,12.5 A2,2 0 1 1 2,12.5 A2,2 0 1 1 6,12.5 M14,10.5 A2,2 0 1 1 10,10.5 A2,2 0 1 1 14,10.5 M6,12.5 V3.5 L14,2 V10.5"/>
+                                            <TextBlock Grid.Column="1" Text="{DynamicResource Str_Music}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Button>
+
+                                    <Button x:Name="NavVideo" Tag="Video" Style="{StaticResource SidebarSubNavButtonStyle}" Click="SidebarNav_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Path x:Name="IconVideo" Width="13.5" Height="13.5" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                  Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                                  Data="M2,3 H14 V13 H2 Z M6.5,5.8 L10.8,8 L6.5,10.2 Z"/>
+                                            <TextBlock Grid.Column="1" Text="{DynamicResource Str_Video}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Button>
+
+                                    <Button x:Name="NavPrograms" Tag="Programs" Style="{StaticResource SidebarSubNavButtonStyle}" Click="SidebarNav_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Path x:Name="IconPrograms" Width="13.5" Height="13.5" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                  Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                                  Data="M2,2 H7 V7 H2 Z M9,2 H14 V7 H9 Z M2,9 H7 V14 H2 Z M9,9 H14 V14 H9 Z"/>
+                                            <TextBlock Grid.Column="1" Text="{DynamicResource Str_Programs}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Button>
+
+                                    <Button x:Name="NavOther" Tag="Other" Style="{StaticResource SidebarSubNavButtonStyle}" Click="SidebarNav_Click">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="22"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Path x:Name="IconOther" Width="13.5" Height="13.5" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                                  Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                  Data="M2.5,5.5 H13.5 V13.5 H2.5 Z M4.5,5.5 L6,2.5 H10 L11.5,5.5"/>
+                                            <TextBlock Grid.Column="1" Text="{DynamicResource Str_Other}" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Button>
+                                </StackPanel>
+
+                                <!-- Section: Kuyruklar -->
+                                <TextBlock Text="{DynamicResource Str_SidebarQueues}" FontSize="11" FontWeight="Medium"
+                                           Foreground="{DynamicResource TextMutedBrush}" Margin="20,18,14,6"/>
+
+                                <Button x:Name="NavMainQueue" Tag="MainQueue" Style="{StaticResource SidebarNavButtonStyle}" Click="SidebarNav_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Path x:Name="IconMainQueue" Width="15" Height="15" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Left"
+                                              Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                              Data="M3,2.5 H10 V10.5 H3 Z M6,5.5 H13 V13.5 H6 Z"/>
+                                        <TextBlock Grid.Column="1" Text="{DynamicResource Str_MainQueue}" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
                 </DockPanel>
             </Border>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="Transparent"/>
-
-            <!-- Right: Search Bar + DataGrid -->
-            <Border Grid.Column="2" CornerRadius="9" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}" Background="{DynamicResource PanelBgBrush}">
-            <Grid Margin="1">
+            <!-- ========================================================= -->
+            <!--  RIGHT MAIN WORKSPACE                                     -->
+            <!-- ========================================================= -->
+            <Grid Grid.Column="1" Background="{DynamicResource PanelBgBrush}">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="34"/>   <!-- Top Custom Window Chrome Strip -->
+                    <RowDefinition Height="Auto"/> <!-- Title + Search + Add URL -->
+                    <RowDefinition Height="Auto"/> <!-- Action Toolbar -->
+                    <RowDefinition Height="*"/>    <!-- Animated Content Area (Torrents + DataGrid) -->
+                    <RowDefinition Height="34"/>   <!-- Bottom Status Bar -->
                 </Grid.RowDefinitions>
 
-                <!-- Search & Quick Filter Bar -->
-                <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,6" Background="{DynamicResource WindowBgBrush}">
+                <!-- 0. Custom Caption Controls -->
+                <Grid Grid.Row="0" Background="Transparent">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,2,6,0">
+                        <Button Style="{DynamicResource WindowControlButtonStyle}" Click="BtnWinMinimize_Click" ToolTip="Küçült">
+                            <Path Data="M0,0 H10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2"/>
+                        </Button>
+                        <Button x:Name="BtnWinMaximize" Style="{DynamicResource WindowControlButtonStyle}" Click="BtnWinMaximize_Click" ToolTip="Büyüt">
+                            <Path x:Name="IconWinMaximize" Data="M0.5,0.5 H9.5 V9.5 H0.5 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2"/>
+                        </Button>
+                        <Button Style="{DynamicResource WindowCloseButtonStyle}" Click="BtnWinClose_Click" ToolTip="Kapat">
+                            <Path Data="M0.5,0.5 L9.5,9.5 M9.5,0.5 L0.5,9.5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 1. Page Header + Search + Primary Add URL CTA -->
+                <Grid Grid.Row="1" Margin="24,2,24,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Animated Page Title & Subtitle -->
+                    <StackPanel x:Name="HeaderTitlePanel" Grid.Column="0" VerticalAlignment="Center">
+                        <StackPanel.RenderTransform>
+                            <TranslateTransform x:Name="HeaderSlideTransform" X="0"/>
+                        </StackPanel.RenderTransform>
+                        <TextBlock x:Name="LblPageTitle" Text="{DynamicResource Str_Downloads}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TextBrush}"/>
+                        <TextBlock x:Name="LblPageSubtitle" Text="{DynamicResource Str_SubtitleManageFiles}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0"/>
+                    </StackPanel>
+
+                    <!-- Search Box + + URL Ekle CTA -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Search Pill -->
+                        <Border Width="264" Height="36"
+                                Background="{DynamicResource InputBgBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Margin="0,0,12,0"
+                                Padding="11,0,8,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Path Grid.Column="0" Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center" Margin="0,0,8,0"
+                                      Stroke="{DynamicResource TextMutedBrush}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M6.5,1 A5.5,5.5 0 1 0 6.5,12 A5.5,5.5 0 1 0 6.5,1 M10.6,10.6 L14.5,14.5"/>
+
+                                <Grid Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock x:Name="SearchPlaceholder"
+                                               Text="{DynamicResource Str_SearchDownloadsHint}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               FontSize="12.5"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False"/>
+                                    <TextBox x:Name="TxtSearch"
+                                             AutomationProperties.Name="{DynamicResource Str_SearchPlaceholder}"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="0"
+                                             MinHeight="24"
+                                             FontSize="12.5"
+                                             Foreground="{DynamicResource TextBrush}"
+                                             VerticalContentAlignment="Center"
+                                             TextChanged="TxtSearch_TextChanged">
+                                        <TextBox.Template>
+                                            <ControlTemplate TargetType="TextBox">
+                                                <ScrollViewer x:Name="PART_ContentHost" Focusable="False" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" VerticalAlignment="Center"/>
+                                            </ControlTemplate>
+                                        </TextBox.Template>
+                                    </TextBox>
+                                </Grid>
+
+                                <Button x:Name="BtnSearchFilterOrClear" Grid.Column="2" Style="{DynamicResource GhostButtonStyle}" Padding="5" Click="BtnSearchFilterOrClear_Click" ToolTip="Filtrele / Temizle">
+                                    <Path x:Name="IconSearchSuffix" Width="13" Height="13" Stretch="Uniform"
+                                          Stroke="{DynamicResource TextSecondaryBrush}" StrokeThickness="1.4" StrokeStartLineCap="Round"
+                                          Data="M1,3.5 H13 M1,9.5 H13 M4,1.5 V5.5 M9.5,7.5 V11.5"/>
+                                </Button>
+                            </Grid>
+                        </Border>
+
+                        <!-- Primary Emerald + URL Ekle CTA -->
+                        <Button Style="{DynamicResource PrimaryAccentButtonStyle}" Height="36" Padding="16,0" Click="BtnAddUrl_Click" ToolTip="{DynamicResource Str_NewDownload}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path Width="12" Height="12" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                      Stroke="{DynamicResource PrimaryActionTextBrush}" StrokeThickness="2.1" StrokeStartLineCap="Round"
+                                      Data="M6,1 V11 M1,6 H11"/>
+                                <TextBlock Text="{DynamicResource Str_AddUrl}" Foreground="{DynamicResource PrimaryActionTextBrush}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 2. Action Toolbar -->
+                <Border Grid.Row="2" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="0,0,0,1" Padding="18,4,20,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="TxtSearch" Height="38" AutomationProperties.Name="{DynamicResource Str_SearchPlaceholder}" Padding="10,0" VerticalContentAlignment="Center" 
-                                 TextChanged="TxtSearch_TextChanged" Foreground="{DynamicResource TextBrush}">
-                            <TextBox.Style>
-                                <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-                                    <Style.Triggers>
-                                        <Trigger Property="Text" Value="">
-                                            <Setter Property="Background">
-                                                <Setter.Value>
-                                                    <VisualBrush AlignmentX="Left" Stretch="None">
-                                                        <VisualBrush.Visual>
-                                                            <TextBlock Text="{DynamicResource Str_SearchPlaceholder}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="10,0"/>
-                                                        </VisualBrush.Visual>
-                                                    </VisualBrush>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Trigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBox.Style>
-                        </TextBox>
 
-                        <TextBlock x:Name="LblItemCount" Grid.Column="1" Text="0 dosya" VerticalAlignment="Center" Margin="12,0,4,0" 
-                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"/>
+                        <!-- Left Actions -->
+                        <WrapPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource ActionToolbarButtonStyle}" Click="BtnResume_Click" ToolTip="{DynamicResource Str_ResumeClean}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Width="12" Height="12" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round"
+                                          Data="M2.5,1.5 L11.5,6.5 L2.5,11.5 Z"/>
+                                    <TextBlock Text="{DynamicResource Str_ResumeClean}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource ActionToolbarButtonStyle}" Click="BtnPause_Click" ToolTip="{DynamicResource Str_PauseClean}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Width="11" Height="12" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M3,2 V12 M9,2 V12"/>
+                                    <TextBlock Text="{DynamicResource Str_PauseClean}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource ActionToolbarButtonStyle}" Click="BtnStopAll_Click" ToolTip="{DynamicResource Str_StopAll}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Width="12" Height="12" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round"
+                                          Data="M2,2 H12 V12 H2 Z"/>
+                                    <TextBlock Text="{DynamicResource Str_StopAll}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource ActionToolbarButtonStyle}" Click="BtnDelete_Click" ToolTip="{DynamicResource Str_Delete}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Data="M2,4 H14 M4.5,4 L5.2,13.5 H10.8 L11.5,4 M6,4 V2.2 H10 V4"/>
+                                    <TextBlock Text="{DynamicResource Str_Delete}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Style="{StaticResource ActionToolbarButtonStyle}" Click="BtnOpenFolder_Click" ToolTip="{DynamicResource Str_ShowInFolder}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Width="14" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.45" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V12.5 H1.5 Z"/>
+                                    <TextBlock Text="{DynamicResource Str_ShowInFolder}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </WrapPanel>
+
+                        <!-- Right Utility Actions -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource ActionToolbarButtonStyle}" Click="BtnTrayMinimize_Click" ToolTip="{DynamicResource Str_MinimizeToTray}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M7,2 V10.5 M4,7.5 L7,10.5 L10,7.5 M2,13 H12"/>
+                                    <TextBlock Text="{DynamicResource Str_TrayMinimize}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button x:Name="BtnToolsDropdown" Style="{StaticResource ActionToolbarButtonStyle}" Margin="2,0,0,0" Click="BtnToolsDropdown_Click" ToolTip="{DynamicResource Str_Tools}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Width="13" Height="13" Stretch="Uniform" Margin="0,0,7,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.4" StrokeLineJoin="Round"
+                                          Data="M2,2 H6.5 V6.5 H2 Z M9.5,2 H14 V6.5 H9.5 Z M2,9.5 H6.5 V14 H2 Z M9.5,9.5 H14 V14 H9.5 Z"/>
+                                    <TextBlock Text="{DynamicResource Str_Tools}" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center"/>
+                                    <Path Width="8" Height="5" Stretch="Uniform" Margin="6,1,0,0" VerticalAlignment="Center"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          Data="M1,1 L4.5,4.5 L8,1"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- Virtualized IDM Downloads DataGrid -->
-                <DataGrid x:Name="GridDownloads" Grid.Row="1" AutoGenerateColumns="False" 
-                          RowHeight="38" ColumnHeaderHeight="34" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
-                          SelectionMode="Single" SelectionUnit="FullRow"
-                          GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="{DynamicResource BorderBrush}"
-                          Background="{DynamicResource PanelBgBrush}" RowBackground="{DynamicResource PanelBgBrush}"
-                          BorderThickness="0" HeadersVisibility="Column"
-                          MouseDoubleClick="GridDownloads_MouseDoubleClick">
+                <!-- 3. Animated Main Content Area (Torrent Workspace + Downloads DataGrid) -->
+                <Grid x:Name="WorkspaceContentHost" Grid.Row="3" Margin="14,2,14,0" ClipToBounds="True">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="ContentSlideTransform" Y="0"/>
+                    </Grid.RenderTransform>
 
-                    <DataGrid.ContextMenu>
-                        <ContextMenu>
-                            <MenuItem Header="{DynamicResource Str_OpenFile}" Click="ContextOpen_Click"/>
-                            <MenuItem Header="{DynamicResource Str_ShowInFolder}" Click="ContextOpenFolder_Click"/>
-                            <Separator/>
-                            <MenuItem Header="{DynamicResource Str_Resume}" Click="BtnResume_Click"/>
-                            <MenuItem Header="{DynamicResource Str_Pause}" Click="BtnPause_Click"/>
-                            <Separator/>
-                            <MenuItem Header="{DynamicResource Str_Details}" Click="ContextDetails_Click"/>
-                            <MenuItem Header="{DynamicResource Str_VerifySha256}" Click="ContextVerifyChecksum_Click"/>
-                            <Separator/>
-                            <MenuItem Header="{DynamicResource Str_CopyUrl}" Click="ContextCopyUrl_Click"/>
-                            <MenuItem Header="{DynamicResource Str_Delete}" Click="BtnDelete_Click"/>
-                            <MenuItem Header="{DynamicResource Str_DeleteAll}" Click="ContextDeleteAll_Click"/>
-                        </ContextMenu>
-                    </DataGrid.ContextMenu>
+                    <DockPanel>
+                        <windows:TorrentWorkspace x:Name="Torrents" DockPanel.Dock="Top" Visibility="Collapsed" Margin="4,6,4,8"/>
 
-                    <DataGrid.Columns>
-                        <!-- File Name -->
-                        <DataGridTemplateColumn Header="{DynamicResource Str_ColFileName}" Width="*" MinWidth="175" SortMemberPath="FileName">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Margin="4,2">
-                                        <Image Source="{Binding FileIcon}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
-                                        <TextBlock Text="{Binding FileName}" FontWeight="Medium" Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                        <DataGrid x:Name="GridDownloads"
+                                  AutoGenerateColumns="False"
+                                  RowHeight="44"
+                                  ColumnHeaderHeight="38"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  IsReadOnly="True"
+                                  SelectionMode="Single"
+                                  SelectionUnit="FullRow"
+                                  GridLinesVisibility="Horizontal"
+                                  HorizontalGridLinesBrush="{DynamicResource BorderSubtleBrush}"
+                                  Background="{DynamicResource PanelBgBrush}"
+                                  RowBackground="Transparent"
+                                  BorderThickness="0"
+                                  HeadersVisibility="Column"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto"
+                                  ContextMenu="{StaticResource DownloadRowContextMenu}"
+                                  MouseDoubleClick="GridDownloads_MouseDoubleClick">
 
-                        <!-- Size -->
-                        <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColSize}" Binding="{Binding TotalSizeFormatted}" Width="95" SortMemberPath="TotalSize"/>
+                            <DataGrid.Columns>
+                                <!-- Checkbox Column -->
+                                <DataGridTemplateColumn Width="42" CanUserResize="False" CanUserSort="False">
+                                    <DataGridTemplateColumn.HeaderStyle>
+                                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="DataGridColumnHeader">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </DataGridTemplateColumn.HeaderStyle>
+                                    <DataGridTemplateColumn.HeaderTemplate>
+                                        <DataTemplate>
+                                            <CheckBox x:Name="ChkSelectAll" Click="ChkSelectAll_Click" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.HeaderTemplate>
+                                    <DataGridTemplateColumn.CellStyle>
+                                        <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                            <Setter Property="Padding" Value="0"/>
+                                        </Style>
+                                    </DataGridTemplateColumn.CellStyle>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
-                        <!-- Status -->
-                        <DataGridTemplateColumn Header="{DynamicResource Str_ColStatus}" Width="140" SortMemberPath="StatusText">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Center" Background="{DynamicResource CardBgBrush}">
-                                        <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextBrush}"/>
-                                    </Border>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <!-- File Name -->
+                                <DataGridTemplateColumn Header="{DynamicResource Str_ColFileName}" Width="*" MinWidth="185" SortMemberPath="FileName">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Image Source="{Binding FileIcon}" Width="18" Height="18" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                       IsHitTestVisible="False" Visibility="{Binding FileIconVisibility}" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                <Path Width="17" Height="17" Margin="0,0,10,0" Stretch="Uniform" VerticalAlignment="Center"
+                                                      Visibility="{Binding TorrentIconVisibility}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5"
+                                                      Data="M8,3 L3,13 13,13 Z M8,0 A3,3 0 1 0 8,6 A3,3 0 1 0 8,0 M3,10 A3,3 0 1 0 3,16 A3,3 0 1 0 3,10 M13,10 A3,3 0 1 0 13,16 A3,3 0 1 0 13,10"
+                                                      ToolTip="BitTorrent"/>
+                                                <TextBlock Text="{Binding DisplayName}" ToolTip="{Binding FileName}"
+                                                           FontWeight="Medium" FontSize="13" Foreground="{DynamicResource TextBrush}"
+                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
-                        <!-- Progress Bar & % -->
-                        <DataGridTemplateColumn Header="{DynamicResource Str_ColProgress}" Width="145" SortMemberPath="ProgressPercentage">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="4,3">
-                                        <ProgressBar Margin="0,0,48,0" Value="{Binding ProgressPercentage, Mode=OneWay}" Minimum="0" Maximum="100" Height="7" Foreground="{DynamicResource AccentBrush}"/>
-                                        <TextBlock Text="{Binding ProgressPercentage, StringFormat='{}{0:0.0}%'}" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                <!-- Size -->
+                                <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColSize}" Binding="{Binding TotalSizeFormatted}" Width="88" SortMemberPath="TotalSize"/>
 
-                        <!-- Speed -->
-                        <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColSpeed}" Binding="{Binding SpeedFormatted}" Width="105"/>
+                                <!-- Status (Icon + Colored Label matching reference) -->
+                                <DataGridTemplateColumn Header="{DynamicResource Str_ColStatus}" Width="112" SortMemberPath="CompactStatusText">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" ToolTip="{Binding StatusText}">
+                                                <!-- Completed check-circle icon -->
+                                                <Grid Width="15" Height="15" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                    <Ellipse Stroke="{Binding StatusBrush}" StrokeThickness="1.4" Fill="Transparent"/>
+                                                    <Path Data="M4.3,7.6 L6.5,9.8 L10.7,5.3" Stroke="{Binding StatusBrush}" StrokeThickness="1.5"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                                                        <Path.Style>
+                                                            <Style TargetType="Path">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Path.Style>
+                                                    </Path>
+                                                    <Ellipse Width="5" Height="5" Fill="{Binding StatusBrush}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsCompleted}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                </Grid>
+                                                <TextBlock Text="{Binding CompactStatusText}" FontSize="12.5" FontWeight="Medium"
+                                                           Foreground="{Binding StatusBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
-                        <!-- Time Left (ETA) -->
-                        <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColTimeLeft}" Binding="{Binding TimeRemainingFormatted}" Width="95"/>
+                                <!-- Progress Pill Bar + % -->
+                                <DataGridTemplateColumn Header="{DynamicResource Str_ColProgress}" Width="154" SortMemberPath="ProgressPercentage">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Grid VerticalAlignment="Center">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="44"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ProgressBar Grid.Column="0" Value="{Binding ProgressPercentage, Mode=OneWay}" Minimum="0" Maximum="100" Height="7" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding ProgressPercentText}" FontSize="12" FontWeight="Medium"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
 
-                        <!-- Threads / Connections -->
-                        <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColParts}" Binding="{Binding ConnectionCount, StringFormat='{}{0} th'}" Width="75"/>
+                                <!-- Speed -->
+                                <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColSpeed}" Binding="{Binding SpeedFormatted}" Width="72"/>
 
-                        <!-- Date Added -->
-                        <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColDateAdded}" Binding="{Binding DateAddedFormatted}" Width="120"/>
-                    </DataGrid.Columns>
-                </DataGrid>
+                                <!-- Time Left -->
+                                <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColTimeLeft}" Binding="{Binding TimeRemainingFormatted}" Width="88"/>
+
+                                <!-- Parts / Connections -->
+                                <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColParts}" Binding="{Binding ConnectionsShortText}" Width="60"/>
+
+                                <!-- Date Added -->
+                                <DataGridTextColumn ElementStyle="{StaticResource DownloadCellText}" Header="{DynamicResource Str_ColDateAddedFull}" Binding="{Binding DateAddedFormatted}" Width="124"/>
+
+                                <!-- Overflow Menu Button (...) -->
+                                <DataGridTemplateColumn Width="40" CanUserResize="False" CanUserSort="False">
+                                    <DataGridTemplateColumn.CellStyle>
+                                        <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                            <Setter Property="Padding" Value="0"/>
+                                        </Style>
+                                    </DataGridTemplateColumn.CellStyle>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource RowOverflowButtonStyle}" Click="RowOverflow_Click" ToolTip="İşlemler">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Ellipse Width="3" Height="3" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Margin="1,0"/>
+                                                    <Ellipse Width="3" Height="3" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Margin="1.5,0"/>
+                                                    <Ellipse Width="3" Height="3" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Margin="1,0"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </Grid>
+
+                <!-- 4. Bottom Status Bar -->
+                <Border Grid.Row="4"
+                        Background="{DynamicResource HeaderBgBrush}"
+                        BorderBrush="{DynamicResource BorderSubtleBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="20,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left: Browser Bridge Status with Green Dot -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="8" Height="8" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,8,0">
+                                <Ellipse.Effect>
+                                    <DropShadowEffect Color="#2CE66B" BlurRadius="6" ShadowDepth="0" Opacity="0.8"/>
+                                </Ellipse.Effect>
+                            </Ellipse>
+                            <TextBlock x:Name="LblIpcStatus" Text="Tarayıcı Köprüsü: Bağlı (Port 41718)" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="LblSpeedLimitStatus" Text="" FontSize="11.5"
+                                       Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                        </StackPanel>
+
+                        <!-- Right: Total Speed | Active | Total -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="LblTotalSpeed" Text="Toplam Hız: 0 B/s" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,18,0"/>
+                            <TextBlock x:Name="LblActiveDownloads" Text="Aktif: 0" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,18,0"/>
+                            <TextBlock x:Name="LblItemCount" Text="Toplam: 0" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </Grid>
-            </Border>
         </Grid>
-
-        <!-- 4. Bottom Status Bar -->
-        <Border Grid.Row="3" Background="{DynamicResource HeaderBgBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,4">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <TextBlock x:Name="LblTotalSpeed" Grid.Column="0" Text="⬇️ Toplam Hız: 0 KB/s" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                <TextBlock x:Name="LblActiveDownloads" Grid.Column="1" Text="Aktif: 0 | Toplam: 0" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                <TextBlock x:Name="LblIpcStatus" Grid.Column="2" Text="{DynamicResource Str_BrowserBridge}" Foreground="{DynamicResource SuccessBrush}" VerticalAlignment="Center"/>
-                <TextBlock x:Name="LblSpeedLimitStatus" Grid.Column="3" Text="⚡ Hız Sınırı: Sınırsız" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-            </Grid>
-        </Border>
-    </Grid>
-
+    </Border>
 </Window>

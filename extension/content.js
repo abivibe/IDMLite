@@ -2074,6 +2074,14 @@ const IDMLITE_BROWSER_TRIGGER_HOSTS = /(^|\.)((drive|docs)\.google\.com|drive\.u
 
     try {
       const urlObj = new URL(href);
+      if (urlObj.protocol === "magnet:") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        chrome.runtime.sendMessage({ action: "downloadUrl", payload: { url: href } }, (reply) => {
+          if (!reply?.success) window.location.assign(href);
+        });
+        return;
+      }
       if (urlObj.protocol !== "http:" && urlObj.protocol !== "https:") return;
 
       // Google Drive: let the browser start the real download; the background download

@@ -17,6 +17,7 @@ public class YtDlpDownloader : IDisposable
     public string Url { get; }
     public string DestinationPath { get; }
     public string ActiveEngine { get; private set; } = "";
+    public long SpeedLimitBytesPerSecond { get; set; }
     public int FragmentConcurrency { get; set; } = 8;
     public string? Cookies { get; set; }
     public string? Referer { get; set; }
@@ -104,11 +105,17 @@ public class YtDlpDownloader : IDisposable
                 "--abort-on-unavailable-fragments",
                 "--retry-sleep", FormattableString.Invariant($"http:exp={1 + Random.Shared.NextDouble():0.00}:8"),
                 "--retry-sleep", "fragment:exp=1:8",
-                "--throttled-rate", "100K",
+                "--socket-timeout", "25",
                 "--buffer-size", "1024K"
             };
+            if (SpeedLimitBytesPerSecond > 0)
+            {
+                argsList.Add("--hls-prefer-native");
+                argsList.Add("--limit-rate");
+                argsList.Add(SpeedLimitBytesPerSecond.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
             argsList.Add("--concurrent-fragments");
-            argsList.Add(Math.Clamp(FragmentConcurrency, 1, 16).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            argsList.Add((SpeedLimitBytesPerSecond > 0 ? 1 : Math.Clamp(FragmentConcurrency, 1, 16)).ToString(System.Globalization.CultureInfo.InvariantCulture));
 
 
 
@@ -318,7 +325,7 @@ public class YtDlpDownloader : IDisposable
                 TimeRemaining = TimeRemaining
             });
         });
-        return DartEngineHelper.DownloadYouTubeAsync(Url, DestinationPath, ffmpeg, progress, ct);
+        return DartEngineHelper.DownloadYouTubeAsync(Url, DestinationPath, ffmpeg, progress, ct, SpeedLimitBytesPerSecond);
     }
 
     private void ParseYtDlpOutput(string line)

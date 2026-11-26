@@ -148,12 +148,50 @@ internal static class Program
             {
                 string output = Path.GetFullPath(args[1]);
                 Directory.CreateDirectory(output);
+                if (args.Length > 2) LocalizationManager.Instance.SetLanguage(args[2]);
                 foreach (var pair in LocalizationManager.Instance.GetCurrentDictionary()) app.Resources[pair.Key] = pair.Value;
                 var settings = new SettingsManager(directory);
                 using var queue = new DownloadQueueManager(settings);
                 using var ipc = new IpcServer(queue, settings);
-                foreach (string name in new[] { "Travel footage.mp4", "Quarterly report.pdf", "Project archive.zip" })
-                    queue.Add(new DownloadTask { FileName = name, Url = "https://example.test/file", SaveDirectory = directory, TotalSize = 7_340_032 });
+                var demoSegments = Enumerable.Range(0, 8).Select(i => new DownloadSegment(i, i * 85_217_280L, (i + 1) * 85_217_280L - 1)
+                {
+                    CurrentByte = (i + 1) * 85_217_280L,
+                    IsCompleted = true
+                }).ToList();
+                var demoTask = new DownloadTask
+                {
+                    FileName = "DLSS.5.MANAGER.1.3.8.exe",
+                    Url = "https://example.test/DLSS.5.MANAGER.1.3.8.exe",
+                    SaveDirectory = Path.Combine(directory, "Programs"),
+                    Category = DownloadCategory.Programs,
+                    TotalSize = 681_738_240,
+                    DownloadedSize = 681_738_240,
+                    ConnectionCount = 8,
+                    Status = DownloadStatus.Completed,
+                    IsVerified = true,
+                    Segments = demoSegments
+                };
+                queue.Add(demoTask);
+                demoTask.Status = DownloadStatus.Completed;
+                demoTask.IsVerified = true;
+                demoTask.FileName = "DLSS.5.MANAGER.1.3.8.exe";
+                foreach (var (name, size, cat, parts) in new[] {
+                    ("Microsoft.WebView2.Fix.exe", 437_855_027L, DownloadCategory.Programs, 8),
+                    ("Blackwater-doctor-1-0.rar", 6_738L, DownloadCategory.Compressed, 1),
+                    ("tarihialan_- TR Kurt bakışı.pdf", 4_676_648L, DownloadCategory.Documents, 32),
+                    ("Travel footage.mp4", 127_340_032L, DownloadCategory.Video, 8)
+                })
+                {
+                    var t = new DownloadTask
+                    {
+                        FileName = name, Url = "https://example.test/" + name, SaveDirectory = directory,
+                        Category = cat, TotalSize = size, DownloadedSize = size, ConnectionCount = parts
+                    };
+                    queue.Add(t);
+                    t.FileName = name;
+                    t.Status = DownloadStatus.Completed;
+                    t.IsVerified = true;
+                }
                 foreach (string theme in new[] { "Light", "Dark" })
                 {
                     app.Resources.MergedDictionaries.Clear();
@@ -163,6 +201,10 @@ internal static class Program
                     });
                     var main = new IDMLite.MainWindow(settings, queue, ipc);
                     Capture(main, "main-" + theme);
+                    var progress = new DownloadProgressDialog(demoTask, queue);
+                    Capture(progress, "progress-" + theme);
+                    var settingsDlg = new SettingsDialog(settings, queue);
+                    Capture(settingsDlg, "settings-" + theme);
                     var preview = Create((_, _) => new TaskCompletionSource<ResolvedLinkResult>().Task);
                     Capture(preview, "preview-" + theme);
                 }
@@ -260,6 +302,7 @@ internal static class Program
             hint.OriginalUrl = "https://www.instagram.com/reel/other/";
             dialog = Create((_, _) => new TaskCompletionSource<ResolvedLinkResult>().Task, hint);
             Check(Size(dialog).Text == "—", "cached metadata cannot cross video identity"); dialog.Close();
+            TorrentTransfer.Run(directory, PumpUntil, Check);
             Console.WriteLine($"RESULT: {passed} passed");
             return 0;
         }
